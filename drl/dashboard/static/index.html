@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drone Research Lab Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">Drone Research Lab</span>
+      <span class="exp" id="experiment-name">dashboard</span>
+    </div>
+    <div class="status" id="status">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">connecting...</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="card" id="card-hud">
+      <h2>Proximity HUD</h2>
+      <canvas id="hud" width="360" height="360"></canvas>
+      <div class="readout" id="hud-readout">
+        <span data-dir="up">up: --</span>
+        <span data-dir="down">down: --</span>
+      </div>
+    </section>
+
+    <section class="card" id="card-chart">
+      <h2>Range vs. time</h2>
+      <canvas id="range-chart"></canvas>
+    </section>
+
+    <section class="card" id="card-state">
+      <h2>State estimate</h2>
+      <div class="kv" id="state-readout">
+        <div><label>x</label><span data-k="x">--</span><i>m</i></div>
+        <div><label>y</label><span data-k="y">--</span><i>m</i></div>
+        <div><label>z</label><span data-k="z">--</span><i>m</i></div>
+        <div><label>roll</label><span data-k="roll">--</span><i>deg</i></div>
+        <div><label>pitch</label><span data-k="pitch">--</span><i>deg</i></div>
+        <div><label>yaw</label><span data-k="yaw">--</span><i>deg</i></div>
+      </div>
+      <div class="cmd-wrap">
+        <h3>Command</h3>
+        <canvas id="cmd" width="160" height="160"></canvas>
+        <div class="readout" id="cmd-readout"><span>vx --, vy --</span></div>
+      </div>
+    </section>
+
+    <section class="card wide" id="card-map">
+      <h2>Occupancy map</h2>
+      <canvas id="map" width="640" height="480"></canvas>
+      <div class="readout">
+        <span id="map-info">waiting for experiment...</span>
+        <span class="legend"><i class="sw free"></i>free <i class="sw occ"></i>occupied <i class="sw unk"></i>unknown</span>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

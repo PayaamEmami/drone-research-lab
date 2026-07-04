@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drone-research-lab"
+version = "0.1.0"
+description = "A reusable research platform for running flight and sensing experiments on a Crazyflie, with a live web dashboard."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPLv3" }
+authors = [{ name = "drone-research-lab contributors" }]
+keywords = ["crazyflie", "quadcopter", "robotics", "telemetry", "slam", "research"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+
+dependencies = [
+    "cflib~=0.1",
+    "fastapi~=0.115",
+    "uvicorn[standard]~=0.32",
+    "numpy~=2.2",
+]
+
+[project.optional-dependencies]
+analysis = ["pandas~=2.2", "matplotlib~=3.9"]
+dev = ["pytest~=8.3"]
+
+[project.urls]
+Repository = "https://github.com/your-username/drone-research-lab"
+
+[tool.setuptools.packages.find]
+include = ["drl*"]
+exclude = ["experiments*", "scripts*", "data*", "docs*"]

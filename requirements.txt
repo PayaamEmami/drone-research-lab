@@ -1,0 +1,13 @@
+# Core runtime dependencies for Drone Research Lab.
+# Install with: pip install -r requirements.txt
+#
+# cflib is the official Bitcraze Crazyflie Python library (separate GPLv3 project).
+# Drone Research Lab depends on it at runtime but does not vendor or modify it.
+cflib~=0.1
+fastapi~=0.115
+uvicorn[standard]~=0.32
+numpy~=2.2
+
+# Optional: offline analysis / publishable figures (pip install -r requirements-analysis.txt)
+# pandas~=2.2
+# matplotlib~=3.9

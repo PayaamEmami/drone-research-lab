@@ -1,0 +1,29 @@
+# Recordings and generated artifacts
+data/
+*.csv
+*.parquet
+*.mp4
+*.mov
+*.gif
+
+# Crazyflie TOC cache
+cache/
+**/cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
