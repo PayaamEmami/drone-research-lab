@@ -28,9 +28,9 @@ drl/                reusable core library
   viz/                   offline plots (optional analysis extra)
 experiments/             runnable experiment scripts
   common.py              shared helpers
-  proximity_hud/         live range HUD, no flight
-  reactive_flight/       reactive hover experiments
-  occupancy_mapping/     live 2D mapping
+  state_estimation/      Kalman filtering over all sensors, no flight
+  trajectory_tracking/   3-D spiral path following with PID control
+  slam_mapping/          autonomous exploration + SLAM mapping
 scripts/                 setup and diagnostic utilities
 ```
 
@@ -128,7 +128,7 @@ The browser UI (`drl/dashboard/static/js/`) switches on `type`:
 ## Recordings & Analysis
 
 - Experiments stream telemetry to timestamped CSVs under `data/` via `drl.recording.CsvRecorder`. The `data/` folder is gitignored, so recorded runs are never committed.
-- The occupancy mapping experiment can also dump its raw log-odds grid with `--save map.npz` (NumPy `.npz`) for offline re-plotting without a live drone.
+- The SLAM mapping experiment can also dump its raw log-odds grid with `--save-map map.npz` (NumPy `.npz`) and its point cloud with `--save-cloud room.ply` for offline re-plotting without a live drone.
 - Offline analysis and plotting depend on the optional `analysis` extra (`pip install -e ".[analysis]"`), which adds pandas + matplotlib. The `drl.viz` matplotlib helpers are gated behind this extra; keep them out of the import-only core path.
 
 ## Environment Notes
@@ -161,9 +161,9 @@ Run from the repo root as modules:
 
 ```bash
 python -m scripts.connect_check                              # confirm link + decks
-python -m experiments.proximity_hud.run                      # no flight, safe first run
-python -m experiments.reactive_flight.run --mode push --dry-run
-python -m experiments.occupancy_mapping.run --pattern no-fly
+python -m experiments.state_estimation.run                   # no flight, safe first run
+python -m experiments.trajectory_tracking.run --dry-run
+python -m experiments.slam_mapping.run --mode no-fly
 ```
 
 ## Verification Commands

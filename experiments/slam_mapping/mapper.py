@@ -1,14 +1,15 @@
 """A 2D log-odds occupancy grid built from Multi-ranger scans.
 
-This is a lightweight, self-contained occupancy mapper (the "mapping" half of a
-SLAM pipeline; localization here is taken from the Crazyflie's onboard state
-estimate rather than solved jointly). For each pose and each horizontal beam
-with a valid return, we ray-cast from the drone to the hit point: cells along
-the ray are evidence of *free* space (log-odds decremented) and the hit cell is
-evidence of an *obstacle* (log-odds incremented). Beams with no return cast a
-free ray out to a clamp distance.
+The grid is the mapping substrate for the SLAM experiment. For each pose and
+each horizontal beam with a valid return, it ray-casts from the platform to the
+hit point: cells along the ray are evidence of *free* space (log-odds
+decremented) and the hit cell is evidence of an *obstacle* (log-odds
+incremented). Beams with no return cast a free ray out to a clamp distance.
 
-The grid is world-aligned and centered on the drone's starting position.
+The grid is world-aligned and centered on the starting position. In addition to
+integrating scans, it can *score* how well a hypothetical pose's scan agrees
+with the map built so far (:meth:`score_scan`); the scan matcher uses that score
+to correct pose drift.
 """
 from __future__ import annotations
 
@@ -124,6 +125,20 @@ class OccupancyGrid:
                 points.append((ex, ey))
 
         self._last_points = points
+
+    # -------------------------------------------------------------- scan matching
+    def score_scan(self, x: float, y: float, yaw_rad: float,
+                   ranges: Dict[str, Optional[float]]) -> float:
+        """Score how well a scan taken at pose (x, y, yaw) matches the map.
+
+        Read-only: computes each beam's hit endpoint and sums the current
+        log-odds at those cells, rewarding poses whose beams land on cells the
+        map already believes are occupied. The scan matcher searches poses to
+        maximize this score.
+        """
+        # TODO(slam_mapping): sum self._logodds at each observed hit-endpoint cell
+        # (reuse the beam-bearing math from integrate()).
+        raise NotImplementedError
 
     # ------------------------------------------------------------------- export
     def probability(self) -> np.ndarray:

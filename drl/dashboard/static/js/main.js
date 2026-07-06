@@ -23,7 +23,7 @@ function dispatch(frame) {
     case "meta":
       if (p.experiment) {
         document.getElementById("experiment-name").textContent = p.experiment;
-        if (/occupancy mapping/i.test(p.experiment)) {
+        if (/slam|map/i.test(p.experiment)) {
           setMapInfo("waiting for map data...");
         } else {
           setMapInfo("not used in this experiment");

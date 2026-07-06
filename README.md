@@ -6,9 +6,9 @@ Drone Research Lab (DRL) is a research platform for running experiments on a nan
 
 | Experiment | What it does |
 |------------|--------------|
-| [Proximity HUD](experiments/proximity_hud) | Shows the drone's five range sensors live as a radial gauge and a scrolling chart. Nothing flies, so it's the safe first test. |
-| [Reactive flight](experiments/reactive_flight) | The drone hovers and reacts to nearby objects: it either backs away from obstacles (push-away) or keeps a fixed distance from a hand you move toward it (hand-follow). |
-| [Occupancy mapping](experiments/occupancy_mapping) | The drone scans the room as it moves and builds a live top-down map of which areas are open and which are blocked. |
+| [State estimation](experiments/state_estimation) | Reads every onboard sensor and runs Kalman filters over them, showing raw vs. filtered signals live. Nothing flies, so it's the safe first test. |
+| [Trajectory tracking](experiments/trajectory_tracking) | Flies a smooth parametric 3-D path (an expanding, ascending spiral) using PID position controllers, so the drone moves through all three axes at once. |
+| [SLAM mapping](experiments/slam_mapping) | The drone explores a space autonomously and builds a live 2-D occupancy map and a 3-D point cloud, correcting pose drift with scan matching. |
 
 ## Hardware
 
@@ -49,16 +49,16 @@ Then run everything as modules from the repo root, starting with the link check:
 # 1) Confirm the link and decks (run this first, before anything flies):
 python -m scripts.connect_check
 
-# 2) Live proximity HUD (no flight; safe first run):
-python -m experiments.proximity_hud.run
+# 2) State estimation (no flight; safe first run):
+python -m experiments.state_estimation.run
 
-# 3) Reactive flight: validate on the desk first, then fly:
-python -m experiments.reactive_flight.run --mode push --dry-run
-python -m experiments.reactive_flight.run --mode push
+# 3) Trajectory tracking: validate on the desk first, then fly:
+python -m experiments.trajectory_tracking.run --dry-run
+python -m experiments.trajectory_tracking.run
 
-# 4) Occupancy mapping: desk test, then a real scan:
-python -m experiments.occupancy_mapping.run --pattern no-fly
-python -m experiments.occupancy_mapping.run --pattern spin
+# 4) SLAM mapping: hand-carry desk test, then autonomous exploration:
+python -m experiments.slam_mapping.run --mode no-fly
+python -m experiments.slam_mapping.run --mode explore
 ```
 
 Each command prints a dashboard URL (default <http://localhost:8000>) and opens it in the default browser. Press Ctrl+C to stop.

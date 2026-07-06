@@ -11,8 +11,8 @@ Two entry points:
 - :class:`RangerReading` - an immutable snapshot of the six directions, with a
   :meth:`RangerReading.from_sample` builder for telemetry-hub samples.
 - :class:`RangerStream` - a context manager around cflib's ``Multiranger`` for
-  experiments that want a simple poll interface (used by the reactive flight
-  controller alongside a MotionCommander).
+  experiments that want a simple poll interface (e.g. alongside a
+  MotionCommander during flight).
 """
 from __future__ import annotations
 

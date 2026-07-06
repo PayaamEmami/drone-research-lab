@@ -5,7 +5,7 @@ demos. This module centralizes the few things they all need: a clean Ctrl+C
 handler, and mapping telemetry samples into dashboard frame payloads.
 
 Run experiments as modules from the repo root (e.g.
-``python -m experiments.reactive_flight.run``) so ``import drl`` and
+``python -m experiments.state_estimation.run``) so ``import drl`` and
 ``import experiments.common`` resolve without any path manipulation. Install the
 core in editable mode first with ``pip install -e .``.
 """
