@@ -1,4 +1,4 @@
-# SLAM mapping
+# SLAM
 
 The platform explores a space autonomously and builds a live 2-D occupancy map
 and a 3-D point cloud of it, correcting pose drift by matching its range scans
@@ -42,9 +42,9 @@ unknown space, plans a safe path there with A*, flies it, and repeats.
 ## Run
 
 ```bash
-python -m experiments.slam_mapping.run --mode no-fly                       # desk/hand-carry
-python -m experiments.slam_mapping.run --mode explore --save-cloud data/room.ply
-python -m experiments.slam_mapping.run --mode replay --replay data/slam_xxx.csv
+python -m experiments.slam.run --mode no-fly                       # desk/hand-carry
+python -m experiments.slam.run --mode explore --save-cloud data/room.ply
+python -m experiments.slam.run --mode replay --replay data/slam_xxx.csv
 ```
 
 ## Verifying offline

@@ -22,16 +22,16 @@ class PointCloud:
     def add_scan(self, x: float, y: float, z: float, yaw_rad: float,
                  ranges: Dict[str, Optional[float]]) -> None:
         """Project this scan's beam hits to world 3-D points and store them."""
-        # TODO(slam_mapping): for each horizontal beam hit, add a point at the
+        # TODO(slam): for each horizontal beam hit, add a point at the
         # platform's z; for the up beam, add a point at z + up_range.
         raise NotImplementedError
 
     def to_payload(self) -> dict:
         """Serialize (a decimated view of) the cloud for the dashboard."""
-        # TODO(slam_mapping): return {"points": [[x, y, z], ...]} (downsampled).
+        # TODO(slam): return {"points": [[x, y, z], ...]} (downsampled).
         raise NotImplementedError
 
     def save_ply(self, path: str) -> None:
         """Write the cloud as an ASCII .ply file openable in any 3-D viewer."""
-        # TODO(slam_mapping): write a minimal ASCII PLY header + one line per point.
+        # TODO(slam): write a minimal ASCII PLY header + one line per point.
         raise NotImplementedError

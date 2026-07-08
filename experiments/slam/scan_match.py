@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
-from experiments.slam_mapping.mapper import OccupancyGrid
+from experiments.slam.mapper import OccupancyGrid
 
 Pose = Tuple[float, float, float]  # (x, y, yaw_rad)
 
@@ -50,7 +50,7 @@ def match_scan(
     Falls back to ``predicted_pose`` when there is too little map structure or
     too few valid beams to match against.
     """
-    # TODO(slam_mapping): coarse-to-fine search over (dx, dy, dyaw) maximizing
+    # TODO(slam): coarse-to-fine search over (dx, dy, dyaw) maximizing
     # grid.score_scan(...); shrink the step and window each refine pass. Bail out
     # to predicted_pose when fewer than config.min_beams beams have returns.
     raise NotImplementedError

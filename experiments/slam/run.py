@@ -1,4 +1,4 @@
-"""Autonomous exploration + SLAM mapping.
+"""Autonomous exploration + SLAM.
 
 The platform explores a space on its own and builds two views of it live:
 
@@ -16,7 +16,7 @@ Modes (``--mode``):
 - ``explore`` - take off and autonomously explore via frontiers (with periodic
   yaw sweeps to densify the sparse scan). Lands on completion or Ctrl+C.
 - ``no-fly``  - do NOT take off; carry the platform by hand to validate the SLAM
-  + mapping pipeline on a desk/floor.
+  pipeline on a desk/floor.
 - ``replay``  - no hardware; re-run SLAM over a recorded CSV (``--replay PATH``)
   to compare corrected vs. raw trajectory and re-render the map offline.
 
@@ -28,19 +28,19 @@ implemented yet.
 
 Run (from the repo root, after ``pip install -e .``)::
 
-    python -m experiments.slam_mapping.run --mode no-fly
-    python -m experiments.slam_mapping.run --mode explore
-    python -m experiments.slam_mapping.run --mode replay --replay data/slam_xxx.csv
+    python -m experiments.slam.run --mode no-fly
+    python -m experiments.slam.run --mode explore
+    python -m experiments.slam.run --mode replay --replay data/slam_xxx.csv
 """
 from __future__ import annotations
 
 import argparse
 
 from experiments.common import install_stop_handler
-from experiments.slam_mapping.explorer import ExploreConfig, Explorer
-from experiments.slam_mapping.mapper import MapConfig, OccupancyGrid
-from experiments.slam_mapping.pointcloud import PointCloud
-from experiments.slam_mapping.scan_match import MatchConfig
+from experiments.slam.explorer import ExploreConfig, Explorer
+from experiments.slam.mapper import MapConfig, OccupancyGrid
+from experiments.slam.pointcloud import PointCloud
+from experiments.slam.scan_match import MatchConfig
 from drl.config import ServerConfig
 from drl.connection import connect
 from drl.dashboard import DashboardServer, Frame
@@ -48,7 +48,7 @@ from drl.recording import CsvRecorder
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="drl: SLAM mapping + exploration")
+    parser = argparse.ArgumentParser(description="drl: SLAM + exploration")
     parser.add_argument("--mode", choices=["explore", "no-fly", "replay"], default="no-fly")
     parser.add_argument("--uri", default=None, help="Crazyflie radio URI override")
     parser.add_argument("--port", type=int, default=8000, help="dashboard port")
@@ -70,13 +70,13 @@ def main() -> int:
 
     stop = install_stop_handler()
     server = DashboardServer(ServerConfig(port=args.port)).start(open_browser=not args.no_browser)
-    server.publish(Frame("meta", {"experiment": f"SLAM mapping ({args.mode})"}))
+    server.publish(Frame("meta", {"experiment": f"SLAM ({args.mode})"}))
     recorder = None if (args.no_record or args.mode == "replay") else CsvRecorder("slam")
 
     if args.mode == "replay":
         if not args.replay:
             parser.error("--mode replay requires --replay PATH")
-        # TODO(slam_mapping): read the CSV; for each row run the SLAM step
+        # TODO(slam): read the CSV; for each row run the SLAM step
         #   (predict from odometry delta -> scan_match -> grid.integrate +
         #   cloud.add_scan) and publish map/cloud/traj frames. No hardware.
         raise NotImplementedError
@@ -86,7 +86,7 @@ def main() -> int:
         if fly:
             link.require_decks("flow2", "multiranger")
 
-        # TODO(slam_mapping): SLAM + exploration loop.
+        # TODO(slam): SLAM + exploration loop.
         #   - subscribe to state + ranger telemetry
         #   - each scan: predicted = last_corrected + (ekf_now - ekf_prev);
         #     corrected = match_scan(grid, predicted, ranges, match_cfg);

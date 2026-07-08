@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from experiments.slam_mapping.mapper import OccupancyGrid
+from experiments.slam.mapper import OccupancyGrid
 
 Cell = Tuple[int, int]        # (gx, gy)
 WorldPoint = Tuple[float, float]
@@ -43,7 +43,7 @@ class ExploreConfig:
 
 def find_frontiers(grid: OccupancyGrid, config: ExploreConfig) -> List[List[Cell]]:
     """Return clusters of frontier cells (free cells adjacent to unknown)."""
-    # TODO(slam_mapping): classify cells free/occupied/unknown from probability();
+    # TODO(slam): classify cells free/occupied/unknown from probability();
     # collect free cells with an unknown 4-neighbor; cluster them; drop clusters
     # smaller than config.min_frontier_cells.
     raise NotImplementedError
@@ -52,7 +52,7 @@ def find_frontiers(grid: OccupancyGrid, config: ExploreConfig) -> List[List[Cell
 def plan_path(grid: OccupancyGrid, start: Cell, goal: Cell,
               config: ExploreConfig) -> Optional[List[Cell]]:
     """A* path over known-free cells (obstacles inflated), or None if unreachable."""
-    # TODO(slam_mapping): A* on the inflated free-space grid; 8-connected moves.
+    # TODO(slam): A* on the inflated free-space grid; 8-connected moves.
     raise NotImplementedError
 
 
@@ -65,6 +65,6 @@ class Explorer:
 
     def next_goal(self, pose: Tuple[float, float, float]) -> Optional[List[WorldPoint]]:
         """Choose a frontier and return world-space waypoints to it, or None if done."""
-        # TODO(slam_mapping): find frontiers, pick the best cluster, plan a path
+        # TODO(slam): find frontiers, pick the best cluster, plan a path
         # from the current cell, and convert the cell path to world waypoints.
         raise NotImplementedError

@@ -136,7 +136,7 @@ class OccupancyGrid:
         map already believes are occupied. The scan matcher searches poses to
         maximize this score.
         """
-        # TODO(slam_mapping): sum self._logodds at each observed hit-endpoint cell
+        # TODO(slam): sum self._logodds at each observed hit-endpoint cell
         # (reuse the beam-bearing math from integrate()).
         raise NotImplementedError
 
