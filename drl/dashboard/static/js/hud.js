@@ -1,14 +1,14 @@
 // Radial proximity HUD: draws the four horizontal beams as spokes (length =
 // distance, color graded near=red -> far=green) plus an up/down readout.
-import { DISPLAY_RANGE_M, DIRS } from "./constants.js";
+import { DISPLAY_RANGE_M, DIRS, COLORS } from "./constants.js";
 
 export function proximityColor(d) {
-  if (d == null) return "#39414d";
+  if (d == null) return COLORS.surfaceInput;
   const t = Math.max(0, Math.min(1, d / DISPLAY_RANGE_M));
-  // near = red, far = green
-  const r = Math.round(248 * (1 - t) + 63 * t);
-  const g = Math.round(81 * (1 - t) + 185 * t);
-  const b = Math.round(73 * (1 - t) + 80 * t);
+  // near = error, far = success
+  const r = Math.round(248 * (1 - t) + 46 * t);
+  const g = Math.round(81 * (1 - t) + 160 * t);
+  const b = Math.round(73 * (1 - t) + 67 * t);
   return `rgb(${r},${g},${b})`;
 }
 
@@ -22,8 +22,8 @@ export function drawHud(p) {
   ctx.clearRect(0, 0, W, H);
 
   // Range rings
-  ctx.strokeStyle = "#2a323d";
-  ctx.fillStyle = "#8b97a7";
+  ctx.strokeStyle = COLORS.grid;
+  ctx.fillStyle = COLORS.muted;
   ctx.font = "10px system-ui";
   ctx.textAlign = "center";
   for (let i = 1; i <= 4; i++) {
@@ -65,12 +65,12 @@ export function drawHud(p) {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
-    ctx.fillStyle = "#e6edf3";
+    ctx.fillStyle = COLORS.text;
     ctx.fillText(d == null ? "--" : d.toFixed(2), cx + ux * (maxR + 14), cy + uy * (maxR + 14) + 3);
   }
 
   // Center body
-  ctx.fillStyle = "#4cc2ff";
+  ctx.fillStyle = COLORS.accent;
   ctx.beginPath();
   ctx.arc(cx, cy, 7, 0, Math.PI * 2);
   ctx.fill();

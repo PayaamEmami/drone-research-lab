@@ -16,6 +16,8 @@ from typing import Dict, Optional, Tuple
 
 from experiments.slam.mapper import OccupancyGrid
 
+_HORIZONTAL_BEAMS = ("front", "back", "left", "right")
+
 Pose = Tuple[float, float, float]  # (x, y, yaw_rad)
 
 
@@ -50,7 +52,43 @@ def match_scan(
     Falls back to ``predicted_pose`` when there is too little map structure or
     too few valid beams to match against.
     """
-    # TODO(slam): coarse-to-fine search over (dx, dy, dyaw) maximizing
-    # grid.score_scan(...); shrink the step and window each refine pass. Bail out
-    # to predicted_pose when fewer than config.min_beams beams have returns.
-    raise NotImplementedError
+    cfg = config or MatchConfig()
+
+    valid = sum(
+        1 for beam in _HORIZONTAL_BEAMS
+        if ranges.get(beam) is not None and ranges[beam] < grid.cfg.max_range_m
+    )
+    if valid < cfg.min_beams:
+        return predicted_pose
+
+    best_pose = predicted_pose
+    best_score = grid.score_scan(*predicted_pose, ranges)
+
+    win_xy, step_xy = cfg.win_xy, cfg.step_xy
+    win_yaw, step_yaw = cfg.win_yaw, cfg.step_yaw
+
+    for _ in range(cfg.refine_iters):
+        cx, cy, cyaw = best_pose
+        xs = _offsets(cx, win_xy, step_xy)
+        ys = _offsets(cy, win_xy, step_xy)
+        yaws = _offsets(cyaw, win_yaw, step_yaw)
+        for x in xs:
+            for y in ys:
+                for yaw in yaws:
+                    score = grid.score_scan(x, y, yaw, ranges)
+                    if score > best_score:
+                        best_score = score
+                        best_pose = (x, y, yaw)
+        # Refine: shrink the window and step for the next, finer pass.
+        win_xy, step_xy = step_xy, step_xy / 2.0
+        win_yaw, step_yaw = step_yaw, step_yaw / 2.0
+
+    return best_pose
+
+
+def _offsets(center: float, window: float, step: float):
+    """Candidate values from center-window to center+window inclusive."""
+    if step <= 0:
+        return [center]
+    n = int(round(window / step))
+    return [center + i * step for i in range(-n, n + 1)]

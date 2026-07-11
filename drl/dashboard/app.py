@@ -7,9 +7,10 @@ any thread; the frame is marshaled onto the server loop and broadcast to every
 connected browser as JSON.
 
 Each frame is ``{"type": str, "ts": float, "payload": dict}``. The browser keys
-off ``type`` to update the matching panel ("ranger", "state", "cmd", "map").
-The latest frame of each type is cached and replayed to newly-connected clients
-so a browser opened mid-run is immediately populated.
+off ``type`` to update the matching panel (``meta``, ``ranger``, ``state``,
+``cmd``, ``map``, ``estimate``, ``traj``, ``cloud``, ``battery``). The latest frame of each
+type is cached and replayed to newly-connected clients so a browser opened
+mid-run is immediately populated.
 """
 from __future__ import annotations
 

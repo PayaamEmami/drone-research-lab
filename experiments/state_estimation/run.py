@@ -16,9 +16,6 @@ Two layers of estimation are demonstrated:
 No flight is involved - the platform can sit on a desk while you move objects
 near the sensors and watch the raw vs. filtered traces respond.
 
-Status: scaffold. The filter math and the dashboard "estimate" renderer are not
-implemented yet; see the TODOs below and in ``filters.py``.
-
 Run (from the repo root, after ``pip install -e .``)::
 
     python -m experiments.state_estimation.run
@@ -29,7 +26,7 @@ from __future__ import annotations
 import argparse
 import time
 
-from experiments.common import install_stop_handler, state_payload
+from experiments.common import install_stop_handler, publish_battery, state_payload
 from experiments.state_estimation.filters import HeightFusionKalman, ScalarKalman
 from drl.config import ServerConfig
 from drl.connection import connect
@@ -38,10 +35,19 @@ from drl.recording import CsvRecorder
 from drl.sensors.ranger import RangerReading
 from drl.telemetry import (
     TelemetryHub,
+    make_accel_config,
     make_battery_config,
     make_ranger_config,
     make_state_config,
 )
+
+# Standard gravity (m/s^2); acc.z reports ~1.0 g at rest, so subtracting 1 g
+# yields the net world-frame vertical acceleration (assumes the platform is
+# level, which holds for this desk experiment).
+_GRAVITY = 9.80665
+
+_RANGE_BEAMS = ("front", "back", "left", "right", "up", "down")
+_ATTITUDE = ("roll", "pitch", "yaw")
 
 
 def main() -> int:
@@ -56,15 +62,31 @@ def main() -> int:
     stop = install_stop_handler()
     server = DashboardServer(ServerConfig(port=args.port)).start(open_browser=not args.no_browser)
     server.publish(Frame("meta", {"experiment": "state estimation (Kalman filtering)"}))
-    recorder = None if args.no_record else CsvRecorder("state_estimation")
+    channels = list(_RANGE_BEAMS) + ["height"] + list(_ATTITUDE)
+    fieldnames = ["elapsed_s", "vbat"]
+    for channel in channels:
+        fieldnames += [f"{channel}_raw", f"{channel}_filtered"]
+    recorder = None if args.no_record else CsvRecorder("state_estimation", fieldnames=fieldnames)
 
-    # One scalar filter per smoothed channel, plus the height-fusion filter.
-    # TODO(state_estimation): tune per-channel q/r; wire these into on_sample so
-    # each incoming sample runs predict(dt) + update(z) and we publish an
-    # "estimate" frame carrying {channel: {raw, filtered}} for the dashboard.
-    range_filters = {beam: ScalarKalman() for beam in
-                     ("front", "back", "left", "right", "up", "down")}
+    # One scalar filter per smoothed channel (range beams + attitude angles),
+    # plus the height-fusion filter driven by the vertical accelerometer.
+    # Range beams are noisier than the fused attitude estimate, so they get a
+    # smaller measurement variance ratio (trust the model more, smooth harder).
+    range_filters = {beam: ScalarKalman(q=1.0, r=0.05) for beam in _RANGE_BEAMS}
+    attitude_filters = {angle: ScalarKalman(q=5.0, r=0.5) for angle in _ATTITUDE}
     height_filter = HeightFusionKalman()
+
+    # Latest raw + filtered value per channel, published together so the
+    # dashboard chart keeps every series time-aligned.
+    estimate: dict = {}
+    last_t: dict = {}
+    last_vbat = {"value": None}
+
+    def _dt(block: str, sample) -> float:
+        now = sample.get("_host_t", time.time())
+        prev = last_t.get(block)
+        last_t[block] = now
+        return (now - prev) if prev is not None else 0.0
 
     with connect(args.uri) as link:
         decks = link.decks()
@@ -74,17 +96,50 @@ def main() -> int:
         hub = TelemetryHub(link.scf)
         hub.add_config(make_ranger_config(args.rate_ms))
         hub.add_config(make_state_config(args.rate_ms))
+        hub.add_config(make_accel_config(args.rate_ms))
         hub.add_config(make_battery_config())
 
         def on_sample(block: str, ts: int, sample) -> None:
             if block == "ranger":
                 reading = RangerReading.from_sample(sample)
-                server.publish(Frame("ranger", reading.as_dict()))
-                # TODO(state_estimation): predict+update each range_filters[beam]
-                # and publish the raw vs. filtered pair.
+                raw = reading.as_dict()
+                server.publish(Frame("ranger", raw))
+                dt = _dt("ranger", sample)
+                for beam in _RANGE_BEAMS:
+                    kf = range_filters[beam]
+                    kf.predict(dt)
+                    kf.update(raw.get(beam))
+                    estimate[beam] = {"raw": raw.get(beam), "filtered": kf.value}
+                # Downward range also corrects the height-fusion filter.
+                height_filter.update(raw.get("down"))
+                estimate["height"] = {"raw": raw.get("down"), "filtered": height_filter.height}
+                server.publish(Frame("estimate", dict(estimate)))
+                _record(sample)
             elif block == "state":
-                server.publish(Frame("state", state_payload(sample)))
-            # TODO(state_estimation): feed the height_filter from accel + down range.
+                payload = state_payload(sample)
+                server.publish(Frame("state", payload))
+                dt = _dt("state", sample)
+                for angle in _ATTITUDE:
+                    kf = attitude_filters[angle]
+                    kf.predict(dt)
+                    kf.update(payload.get(angle))
+                    estimate[angle] = {"raw": payload.get(angle), "filtered": kf.value}
+            elif block == "accel":
+                dt = _dt("accel", sample)
+                accel_z = (sample.get("acc.z", 1.0) - 1.0) * _GRAVITY
+                height_filter.predict(dt, accel_z)
+            elif block == "battery":
+                last_vbat["value"] = sample.get("pm.vbat")
+                publish_battery(server, sample)
+
+        def _record(sample) -> None:
+            if recorder is None:
+                return
+            row: dict = {"vbat": last_vbat["value"]}
+            for channel, pair in estimate.items():
+                row[f"{channel}_raw"] = pair["raw"]
+                row[f"{channel}_filtered"] = round(pair["filtered"], 4)
+            recorder.write(row)
 
         hub.subscribe(on_sample)
 

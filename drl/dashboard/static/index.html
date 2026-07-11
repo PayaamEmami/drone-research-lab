@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Drone Research Lab Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
@@ -14,6 +17,7 @@
       <span class="exp" id="experiment-name">dashboard</span>
     </div>
     <div class="status" id="status">
+      <span id="battery-readout" class="battery">bat: --</span>
       <span class="dot" id="status-dot"></span>
       <span id="status-text">connecting...</span>
     </div>
@@ -35,7 +39,7 @@
     </section>
 
     <section class="card" id="card-state">
-      <h2>State estimate</h2>
+      <h2 id="state-card-title">State estimate</h2>
       <div class="kv" id="state-readout">
         <div><label>x</label><span data-k="x">--</span><i>m</i></div>
         <div><label>y</label><span data-k="y">--</span><i>m</i></div>
@@ -44,7 +48,7 @@
         <div><label>pitch</label><span data-k="pitch">--</span><i>deg</i></div>
         <div><label>yaw</label><span data-k="yaw">--</span><i>deg</i></div>
       </div>
-      <div class="cmd-wrap">
+      <div class="cmd-wrap" id="command-panel">
         <h3>Command</h3>
         <canvas id="cmd" width="160" height="160"></canvas>
         <div class="readout" id="cmd-readout"><span>vx --, vy --</span></div>
@@ -58,6 +62,53 @@
         <span id="map-info">waiting for experiment...</span>
         <span class="legend"><i class="sw free"></i>free <i class="sw occ"></i>occupied <i class="sw unk"></i>unknown</span>
       </div>
+    </section>
+
+    <section class="card wide" id="card-estimate">
+      <h2>Kalman filter outputs</h2>
+      <div class="estimate-grid">
+        <div class="estimate-panel">
+          <h3>Horizontal range <span>meters</span></h3>
+          <canvas id="estimate-range-chart"></canvas>
+        </div>
+        <div class="estimate-panel">
+          <h3>Height fusion <span>meters</span></h3>
+          <canvas id="estimate-height-chart"></canvas>
+        </div>
+        <div class="estimate-panel">
+          <h3>Orientation <span>degrees</span></h3>
+          <canvas id="estimate-orientation-chart"></canvas>
+        </div>
+      </div>
+      <div class="metrics-header">
+        <h3>Rolling signal comparison</h3>
+      </div>
+      <div class="metrics-wrap">
+        <table class="metrics-table">
+          <thead>
+            <tr>
+              <th>Channel</th>
+              <th>Raw σ</th>
+              <th>Filtered σ</th>
+              <th>Noise reduction</th>
+              <th>Current residual</th>
+            </tr>
+          </thead>
+          <tbody id="estimate-metrics"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" id="card-traj">
+      <h2>Trajectory (top-down)</h2>
+      <canvas id="traj" width="360" height="360"></canvas>
+      <div class="readout"><span id="traj-info">waiting for trajectory...</span></div>
+    </section>
+
+    <section class="card" id="card-cloud">
+      <h2>Point cloud</h2>
+      <canvas id="cloud" width="360" height="360"></canvas>
+      <div class="readout"><span id="cloud-info">waiting for point cloud...</span></div>
     </section>
   </main>
 

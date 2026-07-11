@@ -43,25 +43,19 @@ Next, bring up the hardware:
 export DRL_URI=radio://0/80/2M/E7E7E7E7E7   # or set DRL_URI=... on Windows
 ```
 
-Then run everything as modules from the repo root, starting with the link check:
+Then run everything as modules from the repo root:
 
 ```bash
-# 1) Confirm the link and decks (run this first, before anything flies):
+# Preview the dashboard with synthetic data (no drone required):
+python -m scripts.dashboard_demo
+python -m scripts.dashboard_demo --experiment trajectory
+python -m scripts.dashboard_demo --experiment slam
+
+# When hardware is ready, confirm the link and decks first:
 python -m scripts.connect_check
-
-# 2) State estimation (no flight; safe first run):
-python -m experiments.state_estimation.run
-
-# 3) Trajectory tracking: validate on the desk first, then fly:
-python -m experiments.trajectory_tracking.run --dry-run
-python -m experiments.trajectory_tracking.run
-
-# 4) SLAM: hand-carry desk test, then autonomous exploration:
-python -m experiments.slam.run --mode no-fly
-python -m experiments.slam.run --mode explore
 ```
 
-Each command prints a dashboard URL (default <http://localhost:8000>) and opens it in the default browser. Press Ctrl+C to stop.
+Live experiment commands are documented in each experiment's README under `experiments/`. Each command prints a dashboard URL (default <http://localhost:8000>) and opens it in the default browser. Press Ctrl+C to stop.
 
 ## License
 

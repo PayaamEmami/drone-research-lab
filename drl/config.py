@@ -41,4 +41,5 @@ class TelemetryConfig:
 
     state_rate_ms: int = 50
     ranger_rate_ms: int = 50
+    accel_rate_ms: int = 50
     battery_rate_ms: int = 500

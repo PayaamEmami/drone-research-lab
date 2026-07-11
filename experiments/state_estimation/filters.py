@@ -47,9 +47,16 @@ class ScalarKalman:
 
     def predict(self, dt: float) -> None:
         """Advance the state estimate by ``dt`` seconds (constant-velocity model)."""
-        # TODO(state_estimation): implement the KF predict step.
-        #   x = F @ x ; P = F @ P @ F.T + Q(dt), with F = [[1, dt], [0, 1]].
-        raise NotImplementedError
+        if not self._initialized or dt <= 0.0:
+            return
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        # Continuous white-noise-acceleration process covariance, scaled by q.
+        Q = self.q * np.array([
+            [dt ** 3 / 3.0, dt ** 2 / 2.0],
+            [dt ** 2 / 2.0, dt],
+        ])
+        self._x = F @ self._x
+        self._P = F @ self._P @ F.T + Q
 
     def update(self, z: Optional[float]) -> None:
         """Fuse one measurement ``z``.
@@ -57,9 +64,19 @@ class ScalarKalman:
         Passing ``None`` (an out-of-range beam) should leave the estimate to
         coast on the last prediction rather than injecting a bad measurement.
         """
-        # TODO(state_estimation): implement the KF measurement update.
-        #   On first valid z, initialize the state instead of updating.
-        raise NotImplementedError
+        if z is None:
+            return
+        if not self._initialized:
+            self._x = np.array([float(z), 0.0])
+            self._P = np.eye(2) * 1.0
+            self._initialized = True
+            return
+        H = np.array([[1.0, 0.0]])
+        y = float(z) - (H @ self._x)[0]
+        S = (H @ self._P @ H.T)[0, 0] + self.r
+        K = (self._P @ H.T).flatten() / S
+        self._x = self._x + K * y
+        self._P = (np.eye(2) - np.outer(K, H)) @ self._P
 
     @property
     def value(self) -> float:
@@ -92,14 +109,38 @@ class HeightFusionKalman:
     _initialized: bool = field(default=False, init=False)
 
     def predict(self, dt: float, accel_z: float) -> None:
-        """Advance height/velocity using measured vertical acceleration as input."""
-        # TODO(state_estimation): implement predict with acceleration control input.
-        raise NotImplementedError
+        """Advance height/velocity using measured vertical acceleration as input.
+
+        ``accel_z`` is the world-frame vertical acceleration in m/s^2 (already
+        gravity-compensated by the caller): it acts as a control input driving
+        the constant-acceleration prediction.
+        """
+        if not self._initialized or dt <= 0.0:
+            return
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        B = np.array([0.5 * dt ** 2, dt])
+        Q = self.q * np.array([
+            [dt ** 3 / 3.0, dt ** 2 / 2.0],
+            [dt ** 2 / 2.0, dt],
+        ])
+        self._x = F @ self._x + B * float(accel_z)
+        self._P = F @ self._P @ F.T + Q
 
     def update(self, z_range: Optional[float]) -> None:
         """Correct the estimate with a downward range measurement (meters)."""
-        # TODO(state_estimation): implement the height measurement update.
-        raise NotImplementedError
+        if z_range is None:
+            return
+        if not self._initialized:
+            self._x = np.array([float(z_range), 0.0])
+            self._P = np.eye(2) * 1.0
+            self._initialized = True
+            return
+        H = np.array([[1.0, 0.0]])
+        y = float(z_range) - (H @ self._x)[0]
+        S = (H @ self._P @ H.T)[0, 0] + self.r
+        K = (self._P @ H.T).flatten() / S
+        self._x = self._x + K * y
+        self._P = (np.eye(2) - np.outer(K, H)) @ self._P
 
     @property
     def height(self) -> float:

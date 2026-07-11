@@ -44,9 +44,9 @@ class SpiralParams:
 
 def spiral(t: float, p: SpiralParams) -> Point:
     """Return the desired ``(x, y, z)`` setpoint at time ``t`` seconds."""
-    # TODO(trajectory_tracking): implement the expanding/ascending spiral.
-    #   radius = min(base_radius + radius_growth * t, max_radius)
-    #   z      = min(base_height + climb_rate * t, max_height)
-    #   theta  = angular_rate * t
-    #   x = center_x + radius * cos(theta); y = center_y + radius * sin(theta)
-    raise NotImplementedError
+    radius = min(p.base_radius + p.radius_growth * t, p.max_radius)
+    z = min(p.base_height + p.climb_rate * t, p.max_height)
+    theta = p.angular_rate * t
+    x = p.center[0] + radius * math.cos(theta)
+    y = p.center[1] + radius * math.sin(theta)
+    return (x, y, z)

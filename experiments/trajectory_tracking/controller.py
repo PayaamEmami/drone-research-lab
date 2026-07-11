@@ -42,13 +42,25 @@ class PID:
     def step(self, error: float, dt: float) -> float:
         """Return the control output for the current error over timestep ``dt``.
 
-        Must clamp the output to ``out_limit`` and freeze/back-off the integral
-        term while the output is saturated (anti-windup).
+        Clamps the output to ``out_limit`` and freezes the integral term while
+        the (unclamped) output is saturated so it cannot wind up.
         """
-        # TODO(trajectory_tracking): implement PID with anti-windup.
-        #   p = kp*error; d = kd*(error - prev_error)/dt; integrate error into i;
-        #   clamp output; if saturated, don't let the integral keep growing.
-        raise NotImplementedError
+        derivative = 0.0
+        if self._prev_error is not None and dt > 0.0:
+            derivative = (error - self._prev_error) / dt
+        self._prev_error = error
+
+        candidate_integral = self._integral + error * dt
+        unclamped = self.kp * error + self.ki * candidate_integral + self.kd * derivative
+        output = max(-self.out_limit, min(self.out_limit, unclamped))
+
+        # Anti-windup: only accumulate the integral when not saturated, or when
+        # integrating would pull the output back out of saturation.
+        saturated = unclamped != output
+        if not saturated or (error * unclamped < 0.0):
+            self._integral = candidate_integral
+
+        return output
 
 
 @dataclass
@@ -71,5 +83,8 @@ class TrajectoryController:
         dt: float,
     ) -> Tuple[float, float, float]:
         """Return ``(vx, vy, vz)`` to move ``estimate`` toward ``reference``."""
-        # TODO(trajectory_tracking): run each axis PID on (reference - estimate).
-        raise NotImplementedError
+        return (
+            self.x.step(reference[0] - estimate[0], dt),
+            self.y.step(reference[1] - estimate[1], dt),
+            self.z.step(reference[2] - estimate[2], dt),
+        )

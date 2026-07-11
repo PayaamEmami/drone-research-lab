@@ -18,20 +18,10 @@ Drone Research Lab is a Python research platform for running flight and sensing 
 ## Repository Layout
 
 ```
-drl/                reusable core library
-  config.py              defaults for URI, dashboard, and telemetry
-  connection.py          open the radio link and detect decks
-  telemetry.py           subscribe to and route log data
-  sensors/ranger.py      multiranger distance readings
-  recording.py           save telemetry to CSV
-  dashboard/             live web dashboard
-  viz/                   offline plots (optional analysis extra)
-experiments/             runnable experiment scripts
-  common.py              shared helpers
-  state_estimation/      Kalman filtering over all sensors, no flight
-  trajectory_tracking/   3-D spiral path following with PID control
-  slam/                  autonomous exploration + SLAM
-scripts/                 setup and diagnostic utilities
+drl/            reusable core library
+experiments/    runnable experiment scripts
+scripts/        setup and diagnostic utilities
+tests/          offline pytest suite
 ```
 
 ## Architecture
@@ -57,6 +47,7 @@ The core package (`drl/`) is installable and import-only. Experiments live under
 | `drl.config` | URI + server + telemetry defaults, all environment-overridable. |
 | `drl.connection` | `connect()` context manager around cflib's `SyncCrazyflie`: driver init, arm, estimator reset, deck detection. |
 | `drl.telemetry` | `LogConfig` builders + `TelemetryHub`, which fans incoming samples out to subscribers and keeps the latest sample per block. |
+| `drl.motion` | `VelocityFlight`: takeoff/land lifecycle and world-frame velocity setpoints with a setpoint keepalive thread. |
 | `drl.sensors.ranger` | Normalizes raw Multi-ranger millimeters into meters/`None` (`RangerReading`, `RangerStream`). |
 | `drl.recording` | `CsvRecorder`: append any telemetry dict to a timestamped CSV. |
 | `drl.dashboard` | `DashboardServer` (FastAPI + websocket, runs on a background thread, broadcasts frames) plus the browser UI under `static/`. |
@@ -92,7 +83,11 @@ The browser UI (`drl/dashboard/static/js/`) switches on `type`:
 | `ranger` | `{ front, back, left, right, up, down }` meters or `null` | radial HUD + chart |
 | `state` | `{ x, y, z, roll, pitch, yaw }` | state readout |
 | `cmd` | `{ vx, vy, label }` body-frame m/s | command vector |
-| `map` | `{ res, width, height, origin, data, pose, points }` | occupancy grid |
+| `map` | `{ res, width, height, origin, data, pose, points, pose_raw, trail }` | occupancy grid |
+| `estimate` | `{ <channel>: { raw, filtered } }` | raw vs. filtered traces |
+| `traj` | `{ reference, estimate, command }` | reference-vs-actual path |
+| `cloud` | `{ points: [[x, y, z], ...] }` | 3-D point cloud |
+| `battery` | `{ vbat }` volts | top-bar battery readout |
 
 ### Adding an experiment
 
@@ -115,15 +110,16 @@ The browser UI (`drl/dashboard/static/js/`) switches on `type`:
 - Experiments live under `experiments/<name>/run.py` and read like standalone demos; they add only their own logic and import the core directly.
 - Run experiments and scripts as modules from the repo root (`python -m experiments.<name>.run`) so `drl` and `experiments.common` resolve without path hacks.
 - The dashboard runs on a background thread. Publish data with `server.publish(Frame(type, payload))`; `DashboardServer.publish()` is thread-safe and broadcasts JSON to all connected browsers.
-- Every websocket message follows the frame protocol: `{ "type", "ts", "payload" }`. Known types are `meta`, `ranger`, `state`, `cmd`, and `map` (see the Architecture section in `README.md`).
+- Every websocket message follows the frame protocol: `{ "type", "ts", "payload" }`. Known types are `meta`, `ranger`, `state`, `cmd`, `map`, `estimate`, `traj`, `cloud`, and `battery` (see the frame protocol table above).
 - A new frame `type` needs a matching renderer under `drl/dashboard/static/js/`, registered in `main.js` (and a panel in `index.html` if needed).
 - Heavy payloads (the occupancy `map`) are published from a dedicated rate-limited thread so they never block sensor callbacks.
 
 ## Threading Model
 
-- Main thread: the experiment loop (often blocking, e.g. `MotionCommander` moves).
+- Main thread: the experiment loop (often blocking, e.g. a timed control loop or waypoint following via `VelocityFlight`).
 - cflib threads: deliver telemetry log callbacks; `TelemetryHub` fans them out to subscribers.
 - Dashboard thread: the uvicorn event loop serving HTTP + websockets.
+- Optional helper threads: `VelocityFlight` resends the latest velocity setpoint; `MapPublisher` broadcasts occupancy maps at a fixed rate without blocking telemetry callbacks.
 
 ## Recordings & Analysis
 
@@ -142,56 +138,4 @@ Configuration is environment-overridable so experiments stay portable across mac
 Hardware/driver notes:
 
 - On Windows the Crazyradio may need the Zadig USB driver; on Linux see cflib's udev rules.
-- Do not assume a Crazyflie or Crazyradio is connected when verifying a change. Prefer dry-run / no-fly paths and local logic checks unless the task explicitly requires live hardware.
-
-## Common Commands
-
-Install the core (editable), optionally with extras:
-
-```bash
-python -m venv .venv
-# Windows:  .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -e .                 # core only
-pip install -e ".[analysis]"     # + pandas + matplotlib
-pip install -e ".[dev]"          # + pytest
-```
-
-Run from the repo root as modules:
-
-```bash
-python -m scripts.connect_check                              # confirm link + decks
-python -m experiments.state_estimation.run                   # no flight, safe first run
-python -m experiments.trajectory_tracking.run --dry-run
-python -m experiments.slam.run --mode no-fly
-```
-
-## Verification Commands
-
-There is no CI and no committed test suite yet. The `dev` extra provides `pytest` for when tests are added.
-
-Run the strongest checks available for the files you changed:
-
-```bash
-python -m py_compile <changed_files>   # syntax check without hardware
-python -m pytest                       # once tests exist (dev extra)
-```
-
-For experiment logic, prefer the non-flying validation paths (`--dry-run`, `--pattern no-fly`) over live flight.
-
-## Agent Done Criteria
-
-Before finishing a code change:
-
-1. Run the strongest local checks available for the touched files (at minimum `py_compile`; `pytest` if tests exist).
-2. If you changed a dashboard frame `type`, update both the publisher and the matching JS renderer / `main.js` registration.
-3. If you changed core behavior, threading, env vars, or the frame protocol, keep the Architecture section in `README.md` consistent.
-4. Report which checks you ran and whether they passed.
-5. If a check could not be run (e.g. no hardware, no radio), say exactly why and call out the remaining risk.
-6. If your changes make this file inaccurate or incomplete, update `AGENTS.md` in the same task.
-
-## Conventions
-
-- Keep comments sparse and useful; explain intent, not mechanics.
-- The core stays dependency-light and import-only; heavyweight or experiment-specific logic belongs under `experiments/`.
-- Drone Research Lab is GPLv3 to match `cflib`; `cflib` is a separate PyPI runtime dependency and is never vendored or modified.
+- Do not assume a Crazyflie or Crazyradio is connected when verifying a change. Prefer `python -m scripts.dashboard_demo` for UI work, dry-run / no-fly paths, and local logic checks unless the task explicitly requires live hardware.

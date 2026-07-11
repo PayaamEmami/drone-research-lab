@@ -136,9 +136,18 @@ class OccupancyGrid:
         map already believes are occupied. The scan matcher searches poses to
         maximize this score.
         """
-        # TODO(slam): sum self._logodds at each observed hit-endpoint cell
-        # (reuse the beam-bearing math from integrate()).
-        raise NotImplementedError
+        score = 0.0
+        for beam, bearing in _BEAM_BEARINGS.items():
+            d = ranges.get(beam)
+            if d is None or d >= self.cfg.max_range_m:
+                continue
+            angle = yaw_rad + bearing
+            ex = x + d * math.cos(angle)
+            ey = y + d * math.sin(angle)
+            egx, egy = self._world_to_cell(ex, ey)
+            if self._in_bounds(egx, egy):
+                score += float(self._logodds[egy, egx])
+        return score
 
     # ------------------------------------------------------------------- export
     def probability(self) -> np.ndarray:

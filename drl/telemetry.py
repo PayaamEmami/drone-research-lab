@@ -2,8 +2,9 @@
 
 This provides:
 
-- :func:`make_state_config`, :func:`make_ranger_config`, :func:`make_battery_config`
-  - small builders for the LogConfig blocks experiments commonly need.
+- :func:`make_state_config`, :func:`make_ranger_config`, :func:`make_battery_config`,
+  :func:`make_accel_config` - small builders for the LogConfig blocks experiments
+  commonly need.
 - :class:`TelemetryHub` - registers one or more LogConfigs, fans incoming data
   out to subscriber callbacks, and keeps a short ring buffer of the latest
   samples per block for polling-style consumers.
@@ -61,6 +62,15 @@ def make_battery_config(rate_ms: int = 500) -> LogConfig:
     """Battery voltage, sampled slowly."""
     cfg = LogConfig(name="battery", period_in_ms=rate_ms)
     cfg.add_variable("pm.vbat", "FP16")
+    return cfg
+
+
+def make_accel_config(rate_ms: int = 50) -> LogConfig:
+    """Raw IMU accelerometer in units of g (``acc.z`` is ~1.0 at rest on a level surface)."""
+    cfg = LogConfig(name="accel", period_in_ms=rate_ms)
+    cfg.add_variable("acc.x", "float")
+    cfg.add_variable("acc.y", "float")
+    cfg.add_variable("acc.z", "float")
     return cfg
 
 

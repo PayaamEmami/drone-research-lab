@@ -10,9 +10,6 @@ and streams the reference and the commanded velocity WITHOUT taking off, so you
 can watch the control law on a desk. Fly only in an open, bounded area with
 ceiling clearance for the climbing spiral. Ctrl+C lands.
 
-Status: scaffold. The trajectory math (`trajectory.py`), the PID controllers
-(`controller.py`), and the flight loop below are not implemented yet.
-
 Run (from the repo root, after ``pip install -e .``)::
 
     python -m experiments.trajectory_tracking.run --dry-run
@@ -21,14 +18,17 @@ Run (from the repo root, after ``pip install -e .``)::
 from __future__ import annotations
 
 import argparse
+import time
 
-from experiments.common import install_stop_handler
+from experiments.common import install_stop_handler, monotonic_elapsed, publish_battery
 from experiments.trajectory_tracking.controller import PID, TrajectoryController
-from experiments.trajectory_tracking.trajectory import SpiralParams
+from experiments.trajectory_tracking.trajectory import SpiralParams, spiral
 from drl.config import ServerConfig
 from drl.connection import connect
 from drl.dashboard import DashboardServer, Frame
+from drl.motion import VelocityFlight
 from drl.recording import CsvRecorder
+from drl.telemetry import TelemetryHub, make_battery_config, make_state_config
 
 
 def build_controller(args) -> TrajectoryController:  # noqa: ANN001
@@ -89,14 +89,64 @@ def main() -> int:
         if not args.dry_run:
             link.require_decks("flow2")
 
-        # TODO(trajectory_tracking): main control loop.
-        #   for each tick at rate_hz:
-        #     t = elapsed; ref = spiral(t, spiral_params)
-        #     est = current (x, y, z) from the state estimate (dry-run: assume 0)
-        #     vx, vy, vz = controller.step(ref, est, dt)
-        #     dry-run: publish reference + command; else: send velocity setpoint.
-        #   publish a "traj" frame {reference, estimate, command} for the dashboard.
-        raise NotImplementedError
+        hub = TelemetryHub(link.scf)
+        hub.add_config(make_state_config(int(1000 / args.rate_hz)))
+        hub.add_config(make_battery_config())
+
+        def on_sample(block: str, ts: int, sample) -> None:
+            if block == "battery":
+                publish_battery(server, sample)
+
+        hub.subscribe(on_sample)
+
+        def current_estimate() -> tuple:
+            latest = hub.latest("state")
+            if latest is None:
+                return (0.0, 0.0, 0.0)
+            return (
+                latest.get("stateEstimate.x", 0.0),
+                latest.get("stateEstimate.y", 0.0),
+                latest.get("stateEstimate.z", 0.0),
+            )
+
+        def control_loop(flight) -> None:
+            period = 1.0 / args.rate_hz
+            t0 = time.monotonic()
+            last = None
+            while not stop.is_set():
+                t, dt = monotonic_elapsed(t0, last)
+                last = t0 + t
+                if t >= args.duration:
+                    break
+                ref = spiral(t, spiral_params)
+                est = current_estimate()
+                vx, vy, vz = controller.step(ref, est, dt)
+                if flight is not None:
+                    flight.send_velocity(vx, vy, vz)
+                server.publish(Frame("traj", {
+                    "reference": {"x": ref[0], "y": ref[1], "z": ref[2]},
+                    "estimate": {"x": est[0], "y": est[1], "z": est[2]},
+                    "command": {"vx": vx, "vy": vy, "vz": vz},
+                }))
+                server.publish(Frame("cmd", {"vx": vx, "vy": vy, "label": "spiral"}))
+                if recorder is not None:
+                    recorder.write({
+                        "t": round(t, 3),
+                        "ref_x": ref[0], "ref_y": ref[1], "ref_z": ref[2],
+                        "est_x": est[0], "est_y": est[1], "est_z": est[2],
+                        "vx": vx, "vy": vy, "vz": vz,
+                    })
+                time.sleep(period)
+
+        with hub:
+            if args.dry_run:
+                print("Dry run: streaming reference + command, NOT flying. Ctrl+C to stop.")
+                control_loop(None)
+            else:
+                print("Flying spiral. Ctrl+C to land.")
+                controller.reset()
+                with VelocityFlight(link.scf, default_height=args.base_height) as flight:
+                    control_loop(flight)
 
     if recorder is not None:
         recorder.close()

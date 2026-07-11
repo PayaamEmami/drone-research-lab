@@ -1,7 +1,7 @@
 """Record arbitrary telemetry samples to timestamped CSV files.
 
 The recorder is schema-flexible: it discovers columns from the first row it sees
-and writes a header then. Rows with extra keys are accommodated by re-writing is
+and writes a header then. Rows with extra keys are accommodated; re-writing is
 *not* attempted (CSV has a fixed header), so pass a consistent set of keys per
 recorder, or supply ``fieldnames`` up front.
 

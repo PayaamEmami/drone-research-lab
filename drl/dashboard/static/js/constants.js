@@ -6,17 +6,27 @@ export const DISPLAY_RANGE_M = 2.0;
 // Horizontal beam directions rendered by the HUD and range chart.
 export const DIRS = ["front", "back", "left", "right"];
 
-// Theme palette (kept in sync with styles.css).
+// Theme palette (VS Code Default Dark Modern — matches tools project).
 export const COLORS = {
-  accent: "#4cc2ff",
-  text: "#e6edf3",
-  muted: "#8b97a7",
-  grid: "#2a323d",
-  bg: "#0e1116",
-  front: "#4cc2ff",
-  back: "#d29922",
-  left: "#3fb950",
-  right: "#f778ba",
+  accent: "#0078d4",
+  accentHover: "#026ec1",
+  link: "#4daafc",
+  text: "#cccccc",
+  muted: "#9d9d9d",
+  inactive: "#868686",
+  grid: "#2b2b2b",
+  gridSubtle: "#3c3c3c",
+  bg: "#181818",
+  surfaceElevated: "#1f1f1f",
+  surfaceOverlay: "#202020",
+  surfaceInput: "#313131",
+  front: "#4daafc",
+  back: "#9e6a03",
+  left: "#2ea043",
+  right: "#f85149",
   occupied: "#f85149",
-  hit: "#f7c948",
+  hit: "#9e6a03",
+  success: "#2ea043",
+  warning: "#9e6a03",
+  error: "#f85149",
 };
