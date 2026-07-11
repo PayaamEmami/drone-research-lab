@@ -32,6 +32,19 @@ from drl.config import ServerConfig
 
 logger = logging.getLogger(__name__)
 
+# uvicorn still routes through websockets.legacy; the deprecation text does not
+# include the word "websockets", so filter by message/module at import time.
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    message=r".*ws_handler.*",
+)
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    module=r"websockets\.legacy\.server",
+)
+
 STATIC_DIR = Path(__file__).parent / "static"
 
 
@@ -116,12 +129,6 @@ class DashboardServer:
 
     def start(self, *, open_browser: bool = False, timeout_s: float = 10.0) -> "DashboardServer":
         """Start the server on a background thread and wait until it's ready."""
-        # uvicorn still imports websockets.legacy on current releases; silence noise.
-        warnings.filterwarnings(
-            "ignore",
-            category=DeprecationWarning,
-            message=r".*websockets.*",
-        )
         cfg = uvicorn.Config(
             self._app,
             host=self.config.host,

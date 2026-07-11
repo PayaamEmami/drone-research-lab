@@ -19,12 +19,19 @@ from __future__ import annotations
 
 import logging
 import time
+import warnings
 from threading import Event, Lock, Thread
 from typing import Tuple
 
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
 logger = logging.getLogger(__name__)
+
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    message=r".*TYPE_VELOCITY_WORLD_LEGACY.*",
+)
 
 # World-frame velocity command: (vx, vy, vz) in m/s and yaw rate in deg/s.
 Setpoint = Tuple[float, float, float, float]

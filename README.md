@@ -6,7 +6,8 @@ Drone Research Lab (DRL) is a research platform for running experiments on a nan
 
 | Experiment | What it does |
 |------------|--------------|
-| [State estimation](experiments/state_estimation) | Reads every onboard sensor and runs Kalman filters over them, showing raw vs. filtered signals live. Nothing flies, so it's the safe first test. |
+| [State estimation](experiments/state_estimation) | Reads every onboard sensor and runs Kalman filters over them, showing raw vs. filtered signals live. |
+| [Basic flight](experiments/basic_flight) | Minimal takeoff-hover-land smoke test. Climb a few feet, hold briefly, then descend. |
 | [Trajectory tracking](experiments/trajectory_tracking) | Flies a smooth parametric 3-D path (an expanding, ascending spiral) using PID position controllers, so the drone moves through all three axes at once. |
 | [SLAM](experiments/slam) | The drone explores a space autonomously and builds a live 2-D occupancy map and a 3-D point cloud, correcting pose drift with scan matching. |
 
