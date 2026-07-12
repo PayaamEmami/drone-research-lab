@@ -1,6 +1,6 @@
 # Basic flight
 
-Minimal takeoff-hover-land smoke test. Climb to a target height, hold a few seconds, then descend. Use this when more complex experiments fail and you need to isolate the problem.
+Minimal takeoff-hover-land smoke test. Uses the Crazyflie firmware position controller: ramp altitude up once, hold steady, then ramp down and land.
 
 ## Run
 
@@ -11,9 +11,11 @@ python -m scripts.connect_check
 # 2. Connect and stream telemetry without flying
 python -m experiments.basic_flight.run --dry-run
 
-# 3. Fly (~2 ft up, hover 3 s, land)
+# 3. Fly (~1.6 ft up, hover 4 s, land)
 python -m experiments.basic_flight.run
 
-# Taller / longer hover
-python -m experiments.basic_flight.run --height 0.9 --hover 5
+# Even slower climb/descent
+python -m experiments.basic_flight.run --height 0.5 --ramp-rate 0.04 --hover 6
 ```
+
+Defaults: `--height 0.5`, `--hover 4`, `--ramp-rate 0.06` m/s (about 8 s to climb).
