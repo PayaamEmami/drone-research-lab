@@ -13,6 +13,7 @@
 import { connect } from "./ws.js";
 import { drawHud } from "./hud.js";
 import { initChart, pushChart } from "./rangeChart.js";
+import { updateSensorTable } from "./sensorTable.js";
 import { updateState, drawCmd } from "./state.js";
 import { drawMap } from "./map.js";
 import { updateEstimate } from "./estimate.js";
@@ -36,17 +37,20 @@ function configurePanels(experiment) {
   const isStateEst = /state estimation/.test(name);
   const isTraj = /trajectory/.test(name);
   const isSlam = /slam/.test(name);
+  const isProximity = /proximity/.test(name);
 
   setCardVisible("card-map", isSlam);
   setCardVisible("card-cloud", isSlam);
   setCardVisible("card-estimate", isStateEst);
   setCardVisible("card-traj", isTraj);
+  setCardVisible("card-sensor-table", isProximity);
 
-  // Proximity + state are useful for any live sensing experiment.
-  const sensing = isStateEst || isSlam || isTraj;
+  // Proximity HUD is useful for any live sensing experiment.
+  const sensing = isStateEst || isSlam || isTraj || isProximity;
   setCardVisible("card-hud", sensing);
-  setCardVisible("card-chart", sensing);
-  setCardVisible("card-state", sensing);
+  // Proximity sensing keeps a minimal layout: HUD + raw-values table only.
+  setCardVisible("card-chart", sensing && !isProximity);
+  setCardVisible("card-state", sensing && !isProximity);
 
   // State estimation only observes sensors; it sends no flight commands.
   setCardVisible("command-panel", !isStateEst && (isSlam || isTraj));
@@ -71,6 +75,7 @@ function dispatch(frame) {
     case "ranger":
       drawHud(p);
       pushChart(frame.ts, p);
+      updateSensorTable(p);
       break;
     case "state":
       updateState(p);

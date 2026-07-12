@@ -6,6 +6,7 @@ Drone Research Lab (DRL) is a research platform for running experiments on a nan
 
 | Experiment | What it does |
 |------------|--------------|
+| [Proximity sensing](experiments/proximity_sensing) | Streams the six time-of-flight beams while the platform sits still, showing live proximity on a HUD and a raw-values table. |
 | [State estimation](experiments/state_estimation) | Reads every onboard sensor and runs Kalman filters over them, showing raw vs. filtered signals live. |
 | [Basic flight](experiments/basic_flight) | Minimal takeoff-hover-land smoke test. Climb a few feet, hold briefly, then descend. |
 | [Trajectory tracking](experiments/trajectory_tracking) | Flies a smooth parametric 3-D path (an expanding, ascending spiral) using PID position controllers, so the drone moves through all three axes at once. |
@@ -44,19 +45,19 @@ Next, bring up the hardware:
 export DRL_URI=radio://0/80/2M/E7E7E7E7E7   # or set DRL_URI=... on Windows
 ```
 
-Then run everything as modules from the repo root:
+Then run everything as modules from the repo root. First confirm the radio link and decks:
 
 ```bash
-# Preview the dashboard with synthetic data (no drone required):
-python -m scripts.dashboard_demo
-python -m scripts.dashboard_demo --experiment trajectory
-python -m scripts.dashboard_demo --experiment slam
-
-# When hardware is ready, confirm the link and decks first:
 python -m scripts.connect_check
 ```
 
-Live experiment commands are documented in each experiment's README under `experiments/`. Each command prints a dashboard URL (default <http://localhost:8000>) and opens it in the default browser. Press Ctrl+C to stop.
+Then run an experiment. Each experiment's README under `experiments/` documents its commands and full flag reference:
+
+```bash
+python -m experiments.proximity_sensing.run
+```
+
+Each command prints a dashboard URL (default <http://localhost:8000>) and opens it in the default browser. Press Ctrl+C to stop.
 
 ## License
 

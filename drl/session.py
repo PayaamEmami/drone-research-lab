@@ -4,7 +4,7 @@ from __future__ import annotations
 from contextlib import ExitStack
 from dataclasses import dataclass
 from threading import Event
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional, Sequence
 
 from drl.config import ServerConfig
 from drl.connection import Link, connect
@@ -46,6 +46,10 @@ class ExperimentSession:
         reset_estimator_on_connect: Optional[bool] = None,
         record: Optional[str] = None,
         record_fieldnames: Optional[Iterable[str]] = None,
+        demo: bool = False,
+        demo_frames: Sequence[str] = ("battery", "state"),
+        demo_rate_hz: float = 20.0,
+        demo_simulator: Optional[Callable] = None,
     ):
         self._name = name
         self._port = port
@@ -57,8 +61,12 @@ class ExperimentSession:
         self._reset_estimator = reset_estimator_on_connect
         self._record_prefix = record
         self._record_fieldnames = record_fieldnames
+        self._demo_frames = demo_frames
+        self._demo_rate_hz = demo_rate_hz
+        self._demo_simulator = demo_simulator
         self._stack: Optional[ExitStack] = None
 
+        self.demo = demo
         self.stop = Event()
         self.server = DashboardServer(ServerConfig(host=host, port=port))
         self.link = None
@@ -71,8 +79,13 @@ class ExperimentSession:
 
         self.server = DashboardServer(ServerConfig(host=self._host, port=self._port))
         self.server.start(open_browser=self._open_browser)
-        label = self._name
+        label = f"{self._name} [demo]" if self.demo else self._name
         self.server.publish(Frame("meta", {"experiment": label}))
+
+        # Demo mode previews the dashboard with synthetic data: no radio link,
+        # no telemetry hub, and no recording.
+        if self.demo:
+            return self
 
         if self._connect_drone:
             reset = self._arm if self._reset_estimator is None else self._reset_estimator
@@ -92,6 +105,23 @@ class ExperimentSession:
             )
 
         return self
+
+    def run_demo(self) -> None:
+        """Stream synthetic data to the dashboard until the stop event is set.
+
+        Only valid in demo mode. Uses the experiment's ``demo_simulator`` when
+        one was supplied, otherwise the generic per-frame generators for
+        ``demo_frames``.
+        """
+        from drl.dashboard.demo import run_demo as _run_demo
+
+        _run_demo(
+            self.server,
+            self.stop,
+            frames=self._demo_frames,
+            rate_hz=self._demo_rate_hz,
+            simulator=self._demo_simulator,
+        )
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if self.recorder is not None:

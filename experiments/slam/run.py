@@ -268,6 +268,10 @@ def main() -> int:
     fly = args.mode == "explore"
     record = None if (args.no_record or args.mode == "replay") else "slam"
 
+    demo_simulator = None
+    if args.demo:
+        from experiments.slam.demo import simulate as demo_simulator
+
     with ExperimentSession(
         f"SLAM ({args.mode})",
         port=args.port,
@@ -277,17 +281,23 @@ def main() -> int:
         arm=fly,
         record=record,
         record_fieldnames=RECORD_FIELDS,
+        demo=args.demo,
+        demo_rate_hz=args.demo_rate,
+        demo_simulator=demo_simulator,
     ) as sess:
-        if args.mode == "replay":
+        if args.demo:
+            print("Previewing SLAM with synthetic data. Ctrl+C to stop.")
+            sess.run_demo()
+        elif args.mode == "replay":
             if not args.replay:
                 parser.error("--mode replay requires --replay PATH")
             run_replay(args, sess.server, state, sess.stop)
         else:
             run_live(args, sess, state)
 
-    if args.save_map:
+    if args.save_map and not args.demo:
         grid.save_npz(args.save_map)
-    if args.save_cloud:
+    if args.save_cloud and not args.demo:
         cloud.save_ply(args.save_cloud)
     print("Done.")
     return 0

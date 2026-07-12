@@ -143,4 +143,4 @@ Configuration is environment-overridable so experiments stay portable across mac
 Hardware/driver notes:
 
 - On Windows the Crazyradio may need the Zadig USB driver; on Linux see cflib's udev rules.
-- Do not assume a Crazyflie or Crazyradio is connected when verifying a change. Prefer `python -m scripts.dashboard_demo` for UI work and local logic checks unless the task explicitly requires live hardware.
+- Do not assume a Crazyflie or Crazyradio is connected when verifying a change. Prefer running any experiment with `--demo` (for example `python -m experiments.proximity_sensing.run --demo`) for UI work and local logic checks unless the task explicitly requires live hardware. The `--demo` flag is provided by `drl.cli.add_experiment_args` and handled by `ExperimentSession`, which streams synthetic frames via the `drl.dashboard.demo` harness (generic per-frame generators, or an experiment-supplied `demo_simulator` for higher fidelity such as SLAM and trajectory tracking).

@@ -67,6 +67,10 @@ def main() -> int:
     )
     controller = build_controller(args)
 
+    demo_simulator = None
+    if args.demo:
+        from experiments.trajectory_tracking.demo import simulate as demo_simulator
+
     with ExperimentSession(
         "trajectory tracking (spiral)",
         port=args.port,
@@ -75,7 +79,16 @@ def main() -> int:
         connect_drone=True,
         arm=True,
         record=None if args.no_record else "trajectory_tracking",
+        demo=args.demo,
+        demo_rate_hz=args.demo_rate,
+        demo_simulator=demo_simulator,
     ) as sess:
+        if args.demo:
+            print("Previewing trajectory tracking with synthetic data. Ctrl+C to stop.")
+            sess.run_demo()
+            print("Done.")
+            return 0
+
         sess.link.require_decks("flow2")
 
         sess.hub.add_config(make_state_config(int(1000 / args.rate_hz)))

@@ -68,7 +68,16 @@ def main() -> int:
         arm=False,
         record=None if args.no_record else "state_estimation",
         record_fieldnames=fieldnames,
+        demo=args.demo,
+        demo_frames=("battery", "state", "ranger", "estimate"),
+        demo_rate_hz=args.demo_rate,
     ) as sess:
+        if args.demo:
+            print("Previewing state estimation with synthetic data. Ctrl+C to stop.")
+            sess.run_demo()
+            print("Done.")
+            return 0
+
         decks = sess.link.decks()
         if not decks.get("multiranger", False):
             print("WARNING: Multi-ranger deck not detected; beams will read out of range.")

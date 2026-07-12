@@ -38,6 +38,23 @@
       <canvas id="range-chart"></canvas>
     </section>
 
+    <section class="card hidden" id="card-sensor-table">
+      <h2>Sensor readings</h2>
+      <div class="metrics-wrap">
+        <table class="metrics-table">
+          <thead>
+            <tr>
+              <th>Direction</th>
+              <th>Distance (m)</th>
+              <th>Distance (mm)</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="sensor-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section class="card" id="card-state">
       <h2 id="state-card-title">State estimate</h2>
       <div class="kv" id="state-readout">

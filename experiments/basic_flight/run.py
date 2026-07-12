@@ -37,7 +37,16 @@ def main() -> int:
         open_browser=not args.no_browser,
         connect_drone=True,
         arm=True,
+        demo=args.demo,
+        demo_frames=("battery", "state"),
+        demo_rate_hz=args.demo_rate,
     ) as sess:
+        if args.demo:
+            print("Previewing basic flight with synthetic data. Ctrl+C to stop.")
+            sess.run_demo()
+            print("Done.")
+            return 0
+
         sess.link.require_decks("flow2")
 
         sess.hub.add_config(make_state_config())
