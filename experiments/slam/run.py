@@ -37,21 +37,22 @@ import math
 import time
 from typing import Dict, List, Optional, Tuple
 
-from experiments.common import MapPublisher, install_stop_handler, publish_battery, yaw_radians
 from experiments.slam.explorer import ExploreConfig, Explorer
 from experiments.slam.mapper import MapConfig, OccupancyGrid
 from experiments.slam.pointcloud import PointCloud
 from experiments.slam.scan_match import MatchConfig, match_scan
-from drl.config import ServerConfig
-from drl.connection import connect
-from drl.dashboard import DashboardServer, Frame
+from drl.cli import add_experiment_args
+from drl.dashboard import DashboardServer, Frame, MapPublisher
 from drl.motion import VelocityFlight
-from drl.recording import CsvRecorder
-from drl.sensors.ranger import RangerReading
+from drl.sensors import Sensors
+from drl.session import ExperimentSession
 from drl.telemetry import (
     TelemetryHub,
+    position_from_sample,
+    yaw_radians,
     make_battery_config,
-    make_ranger_config,
+    make_flow_config,
+    make_multiranger_config,
     make_state_config,
 )
 
@@ -81,7 +82,6 @@ class SlamState:
         if self._last_ekf is None or self._corrected is None:
             corrected = ekf
         else:
-            # Predict from the odometry delta, then correct against the map.
             predicted = (
                 self._corrected[0] + (ekf[0] - self._last_ekf[0]),
                 self._corrected[1] + (ekf[1] - self._last_ekf[1]),
@@ -107,15 +107,11 @@ class SlamState:
         return payload
 
 
-def _sample_to_inputs(state_sample, ranger_sample) -> Tuple[Pose, float, Dict[str, Optional[float]]]:
+def _sample_to_inputs(state_sample, multiranger_sample, flow_sample) -> Tuple[Pose, float, Dict[str, Optional[float]]]:
     """Extract ``(ekf_pose, z, ranges)`` from raw telemetry samples."""
-    ekf = (
-        state_sample.get("stateEstimate.x", 0.0),
-        state_sample.get("stateEstimate.y", 0.0),
-        yaw_radians(state_sample),
-    )
-    z = state_sample.get("stateEstimate.z", 0.0)
-    ranges = RangerReading.from_sample(ranger_sample).as_dict()
+    x, y, z = position_from_sample(state_sample)
+    ekf = (x, y, yaw_radians(state_sample))
+    ranges = Sensors.from_samples(multiranger_sample, flow_sample).as_dict()
     return ekf, z, ranges
 
 
@@ -126,7 +122,7 @@ def _publish_frames(server: DashboardServer, state: SlamState) -> None:
     server.publish(Frame("cloud", state.cloud.to_payload()))
 
 
-def run_replay(args, server, state: SlamState, stop) -> None:
+def run_replay(args, server: DashboardServer, state: SlamState, stop) -> None:
     with open(args.replay, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for i, row in enumerate(reader):
@@ -144,16 +140,24 @@ def run_replay(args, server, state: SlamState, stop) -> None:
     print(f"Replay complete: {len(state.trail)} scans integrated.")
 
 
-def _go_to(flight: VelocityFlight, hub: TelemetryHub, target: Tuple[float, float],
-           stop, *, tol: float = 0.15, max_speed: float = 0.2, timeout: float = 15.0) -> None:
+def _go_to(
+    flight: VelocityFlight,
+    hub: TelemetryHub,
+    target: Tuple[float, float],
+    stop,
+    *,
+    tol: float = 0.15,
+    max_speed: float = 0.2,
+    timeout: float = 15.0,
+) -> None:
     """Simple world-frame P-controller flight to a horizontal waypoint."""
     t0 = time.monotonic()
     while not stop.is_set() and (time.monotonic() - t0) < timeout:
-        latest = hub.latest("state")
-        if latest is None:
+        pos = hub.position()
+        if pos is None:
             time.sleep(0.05)
             continue
-        px, py = latest.get("stateEstimate.x", 0.0), latest.get("stateEstimate.y", 0.0)
+        px, py, _ = pos
         ex, ey = target[0] - px, target[1] - py
         if math.hypot(ex, ey) < tol:
             break
@@ -173,50 +177,50 @@ def _yaw_sweep(flight: VelocityFlight, stop, *, rate_deg_s: float = 72.0) -> Non
     flight.hover()
 
 
-def run_live(args, server, state: SlamState, stop, recorder) -> None:
+def run_live(args, sess: ExperimentSession, state: SlamState) -> None:
     fly = args.mode == "explore"
-    with connect(args.uri, arm=fly, reset_estimator_on_connect=fly) as link:
+    if fly:
+        sess.link.require_decks("flow2", "multiranger")
+    elif not sess.link.decks().get("multiranger", False):
+        print("WARNING: Multi-ranger deck not detected; map will stay empty.")
+
+    sess.hub.add_config(make_state_config(args.rate_ms))
+    sess.hub.add_config(make_multiranger_config(args.rate_ms))
+    sess.hub.add_config(make_flow_config(args.rate_ms))
+    sess.hub.add_config(make_battery_config())
+    sess.hub.attach_dashboard(sess.server, auto=["battery"])
+
+    def on_sample(block: str, ts: int, sample) -> None:
+        if block not in ("multiranger", "flow"):
+            return
+        latest_state = sess.hub.latest("state")
+        if latest_state is None:
+            return
+        ekf, z, ranges = _sample_to_inputs(
+            latest_state,
+            sess.hub.latest("multiranger"),
+            sess.hub.latest("flow"),
+        )
+        corrected = state.step(ekf, z, ranges)
+        if sess.recorder is not None:
+            sess.recorder.write({
+                "ekf_x": ekf[0], "ekf_y": ekf[1], "ekf_yaw": ekf[2], "z": z,
+                "x": corrected[0], "y": corrected[1], "yaw": corrected[2],
+                **{beam: ranges.get(beam) for beam in
+                   ("front", "back", "left", "right", "up", "down")},
+            })
+
+    sess.hub.subscribe(on_sample)
+
+    publisher = MapPublisher(sess.server.publish, lambda: _map_frame(state), hz=args.map_hz)
+    with sess.hub, publisher:
         if fly:
-            link.require_decks("flow2", "multiranger")
-        elif not link.decks().get("multiranger", False):
-            print("WARNING: Multi-ranger deck not detected; map will stay empty.")
-
-        hub = TelemetryHub(link.scf)
-        hub.add_config(make_state_config(args.rate_ms))
-        hub.add_config(make_ranger_config(args.rate_ms))
-        hub.add_config(make_battery_config())
-
-        def on_sample(block: str, ts: int, sample) -> None:
-            if block == "battery":
-                publish_battery(server, sample)
-                return
-            if block != "ranger":
-                return
-            latest_state = hub.latest("state")
-            if latest_state is None:
-                return
-            ekf, z, ranges = _sample_to_inputs(latest_state, sample)
-            corrected = state.step(ekf, z, ranges)
-            if recorder is not None:
-                recorder.write({
-                    "ekf_x": ekf[0], "ekf_y": ekf[1], "ekf_yaw": ekf[2], "z": z,
-                    "x": corrected[0], "y": corrected[1], "yaw": corrected[2],
-                    **{beam: ranges.get(beam) for beam in
-                       ("front", "back", "left", "right", "up", "down")},
-                })
-
-        hub.subscribe(on_sample)
-
-        publisher = MapPublisher(server.publish,
-                                 lambda: _map_frame(state), hz=args.map_hz)
-        with hub, publisher:
-            if fly:
-                _explore_loop(args, hub, state, stop, link)
-            else:
-                print("Hand-carry the platform to map the space. Ctrl+C to stop.")
-                while not stop.is_set():
-                    server.publish(Frame("cloud", state.cloud.to_payload()))
-                    time.sleep(0.5)
+            _explore_loop(args, sess.hub, state, sess.stop, sess.link)
+        else:
+            print("Hand-carry the platform to map the space. Ctrl+C to stop.")
+            while not sess.stop.is_set():
+                sess.server.publish(Frame("cloud", state.cloud.to_payload()))
+                time.sleep(0.5)
 
 
 def _map_frame(state: SlamState) -> Optional[Frame]:
@@ -224,17 +228,14 @@ def _map_frame(state: SlamState) -> Optional[Frame]:
     return Frame("map", payload) if payload is not None else None
 
 
-def _explore_loop(args, hub, state: SlamState, stop, link) -> None:
+def _explore_loop(args, hub: TelemetryHub, state: SlamState, stop, link) -> None:
     explorer = Explorer(state.grid, ExploreConfig())
     print("Autonomous exploration. Ctrl+C to land.")
     with VelocityFlight(link.scf, default_height=args.height) as flight:
-        # Initial in-place sweep so the first frontier search has structure.
         _yaw_sweep(flight, stop)
         while not stop.is_set():
-            latest = hub.latest("state")
-            pose = (latest.get("stateEstimate.x", 0.0),
-                    latest.get("stateEstimate.y", 0.0),
-                    yaw_radians(latest)) if latest else (0.0, 0.0, 0.0)
+            pose_data = hub.pose()
+            pose = (pose_data[0], pose_data[1], pose_data[3]) if pose_data else (0.0, 0.0, 0.0)
             waypoints = explorer.next_goal(pose)
             if not waypoints:
                 print("No frontiers left; exploration complete.")
@@ -249,8 +250,7 @@ def _explore_loop(args, hub, state: SlamState, stop, link) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="drl: SLAM + exploration")
     parser.add_argument("--mode", choices=["explore", "no-fly", "replay"], default="no-fly")
-    parser.add_argument("--uri", default=None, help="Crazyflie radio URI override")
-    parser.add_argument("--port", type=int, default=8000, help="dashboard port")
+    add_experiment_args(parser, record=True)
     parser.add_argument("--height", type=float, default=0.4, help="explore: hover height (m)")
     parser.add_argument("--size", type=float, default=8.0, help="map side length (m)")
     parser.add_argument("--res", type=float, default=0.05, help="map resolution (m/cell)")
@@ -259,34 +259,36 @@ def main() -> int:
     parser.add_argument("--replay", default=None, help="replay mode: path to a recorded CSV")
     parser.add_argument("--save-map", default=None, help="path to save final grid as .npz")
     parser.add_argument("--save-cloud", default=None, help="path to save point cloud as .ply")
-    parser.add_argument("--no-record", action="store_true")
-    parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
 
     grid = OccupancyGrid(MapConfig(size_m=args.size, resolution_m=args.res))
     cloud = PointCloud()
     state = SlamState(grid, cloud, MatchConfig())
 
-    stop = install_stop_handler()
-    server = DashboardServer(ServerConfig(port=args.port)).start(open_browser=not args.no_browser)
-    server.publish(Frame("meta", {"experiment": f"SLAM ({args.mode})"}))
-    recorder = None if (args.no_record or args.mode == "replay") \
-        else CsvRecorder("slam", fieldnames=RECORD_FIELDS)
+    fly = args.mode == "explore"
+    record = None if (args.no_record or args.mode == "replay") else "slam"
 
-    if args.mode == "replay":
-        if not args.replay:
-            parser.error("--mode replay requires --replay PATH")
-        run_replay(args, server, state, stop)
-    else:
-        run_live(args, server, state, stop, recorder)
+    with ExperimentSession(
+        f"SLAM ({args.mode})",
+        port=args.port,
+        uri=args.uri,
+        open_browser=not args.no_browser,
+        connect_drone=args.mode != "replay",
+        arm=fly,
+        record=record,
+        record_fieldnames=RECORD_FIELDS,
+    ) as sess:
+        if args.mode == "replay":
+            if not args.replay:
+                parser.error("--mode replay requires --replay PATH")
+            run_replay(args, sess.server, state, sess.stop)
+        else:
+            run_live(args, sess, state)
 
-    if recorder is not None:
-        recorder.close()
     if args.save_map:
         grid.save_npz(args.save_map)
     if args.save_cloud:
         cloud.save_ply(args.save_cloud)
-    server.stop()
     print("Done.")
     return 0
 

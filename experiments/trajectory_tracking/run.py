@@ -5,14 +5,11 @@ by default an expanding, ascending spiral that sweeps through all three axes at
 once. Outer-loop PID controllers on x, y, and z convert the position error into
 a velocity setpoint that is streamed to the flight controller.
 
-SAFETY: this flies autonomously. Validate with ``--dry-run`` first: it computes
-and streams the reference and the commanded velocity WITHOUT taking off, so you
-can watch the control law on a desk. Fly only in an open, bounded area with
-ceiling clearance for the climbing spiral. Ctrl+C lands.
+SAFETY: this flies autonomously. Fly only in an open, bounded area with ceiling
+clearance for the climbing spiral. Ctrl+C lands.
 
 Run (from the repo root, after ``pip install -e .``)::
 
-    python -m experiments.trajectory_tracking.run --dry-run
     python -m experiments.trajectory_tracking.run
 """
 from __future__ import annotations
@@ -20,15 +17,14 @@ from __future__ import annotations
 import argparse
 import time
 
-from experiments.common import install_stop_handler, monotonic_elapsed, publish_battery
 from experiments.trajectory_tracking.controller import PID, TrajectoryController
 from experiments.trajectory_tracking.trajectory import SpiralParams, spiral
-from drl.config import ServerConfig
-from drl.connection import connect
-from drl.dashboard import DashboardServer, Frame
+from drl.cli import add_experiment_args
+from drl.dashboard import Frame
 from drl.motion import VelocityFlight
-from drl.recording import CsvRecorder
-from drl.telemetry import TelemetryHub, make_battery_config, make_state_config
+from drl.session import ExperimentSession
+from drl.telemetry import make_battery_config, make_state_config
+from drl.timing import monotonic_elapsed
 
 
 def build_controller(args) -> TrajectoryController:  # noqa: ANN001
@@ -40,11 +36,9 @@ def build_controller(args) -> TrajectoryController:  # noqa: ANN001
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="drl: 3-D trajectory tracking (PID)")
-    parser.add_argument("--uri", default=None, help="Crazyflie radio URI override")
-    parser.add_argument("--port", type=int, default=8000, help="dashboard port")
+    add_experiment_args(parser, record=True)
     parser.add_argument("--duration", type=float, default=30.0, help="flight duration (s)")
     parser.add_argument("--rate-hz", type=float, default=20.0, help="control loop rate")
-    # Spiral geometry (see trajectory.SpiralParams).
     parser.add_argument("--base-radius", type=float, default=0.3)
     parser.add_argument("--radius-growth", type=float, default=0.05)
     parser.add_argument("--max-radius", type=float, default=0.8)
@@ -52,7 +46,6 @@ def main() -> int:
     parser.add_argument("--base-height", type=float, default=0.4)
     parser.add_argument("--max-height", type=float, default=1.0)
     parser.add_argument("--angular-rate", type=float, default=0.6)
-    # PID gains.
     parser.add_argument("--kp-xy", type=float, default=1.0)
     parser.add_argument("--ki-xy", type=float, default=0.0)
     parser.add_argument("--kd-xy", type=float, default=0.0)
@@ -61,10 +54,6 @@ def main() -> int:
     parser.add_argument("--kd-z", type=float, default=0.0)
     parser.add_argument("--max-speed", type=float, default=0.3, help="horizontal velocity clamp (m/s)")
     parser.add_argument("--max-climb", type=float, default=0.3, help="vertical velocity clamp (m/s)")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="do NOT take off; only stream reference + computed command")
-    parser.add_argument("--no-record", action="store_true")
-    parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
 
     spiral_params = SpiralParams(
@@ -78,42 +67,32 @@ def main() -> int:
     )
     controller = build_controller(args)
 
-    stop = install_stop_handler()
-    server = DashboardServer(ServerConfig(port=args.port)).start(open_browser=not args.no_browser)
-    server.publish(Frame("meta", {"experiment": "trajectory tracking (spiral)"
-                                  + (" [dry-run]" if args.dry_run else "")}))
-    recorder = None if args.no_record else CsvRecorder("trajectory_tracking")
+    with ExperimentSession(
+        "trajectory tracking (spiral)",
+        port=args.port,
+        uri=args.uri,
+        open_browser=not args.no_browser,
+        connect_drone=True,
+        arm=True,
+        record=None if args.no_record else "trajectory_tracking",
+    ) as sess:
+        sess.link.require_decks("flow2")
 
-    with connect(args.uri, arm=not args.dry_run,
-                 reset_estimator_on_connect=not args.dry_run) as link:
-        if not args.dry_run:
-            link.require_decks("flow2")
-
-        hub = TelemetryHub(link.scf)
-        hub.add_config(make_state_config(int(1000 / args.rate_hz)))
-        hub.add_config(make_battery_config())
-
-        def on_sample(block: str, ts: int, sample) -> None:
-            if block == "battery":
-                publish_battery(server, sample)
-
-        hub.subscribe(on_sample)
+        sess.hub.add_config(make_state_config(int(1000 / args.rate_hz)))
+        sess.hub.add_config(make_battery_config())
+        sess.hub.attach_dashboard(sess.server, auto=["battery"])
 
         def current_estimate() -> tuple:
-            latest = hub.latest("state")
-            if latest is None:
+            pos = sess.hub.position()
+            if pos is None:
                 return (0.0, 0.0, 0.0)
-            return (
-                latest.get("stateEstimate.x", 0.0),
-                latest.get("stateEstimate.y", 0.0),
-                latest.get("stateEstimate.z", 0.0),
-            )
+            return pos
 
-        def control_loop(flight) -> None:
+        def control_loop(flight: VelocityFlight) -> None:
             period = 1.0 / args.rate_hz
             t0 = time.monotonic()
             last = None
-            while not stop.is_set():
+            while not sess.stop.is_set():
                 t, dt = monotonic_elapsed(t0, last)
                 last = t0 + t
                 if t >= args.duration:
@@ -121,16 +100,15 @@ def main() -> int:
                 ref = spiral(t, spiral_params)
                 est = current_estimate()
                 vx, vy, vz = controller.step(ref, est, dt)
-                if flight is not None:
-                    flight.send_velocity(vx, vy, vz)
-                server.publish(Frame("traj", {
+                flight.send_velocity(vx, vy, vz)
+                sess.server.publish(Frame("traj", {
                     "reference": {"x": ref[0], "y": ref[1], "z": ref[2]},
                     "estimate": {"x": est[0], "y": est[1], "z": est[2]},
                     "command": {"vx": vx, "vy": vy, "vz": vz},
                 }))
-                server.publish(Frame("cmd", {"vx": vx, "vy": vy, "label": "spiral"}))
-                if recorder is not None:
-                    recorder.write({
+                sess.server.publish(Frame("cmd", {"vx": vx, "vy": vy, "label": "spiral"}))
+                if sess.recorder is not None:
+                    sess.recorder.write({
                         "t": round(t, 3),
                         "ref_x": ref[0], "ref_y": ref[1], "ref_z": ref[2],
                         "est_x": est[0], "est_y": est[1], "est_z": est[2],
@@ -138,26 +116,16 @@ def main() -> int:
                     })
                 time.sleep(period)
 
-        with hub:
-            if args.dry_run:
-                print("Dry run: streaming reference + command, NOT flying. Ctrl+C to stop.")
-                control_loop(None)
-            else:
-                print("Flying spiral. Ctrl+C to land.")
-                controller.reset()
-                flight = VelocityFlight(link.scf, default_height=args.base_height)
-                flight.take_off()
-                try:
-                    control_loop(flight)
-                finally:
-                    # Land from the actual altitude, since the spiral climbs
-                    # above base_height and a fixed-height descent would cut the
-                    # motors while still airborne.
-                    flight.land(from_height=current_estimate()[2])
+        with sess.hub:
+            print("Flying spiral. Ctrl+C to land.")
+            controller.reset()
+            flight = VelocityFlight(sess.link.scf, default_height=args.base_height)
+            flight.take_off()
+            try:
+                control_loop(flight)
+            finally:
+                flight.land(from_height=current_estimate()[2])
 
-    if recorder is not None:
-        recorder.close()
-    server.stop()
     print("Done.")
     return 0
 

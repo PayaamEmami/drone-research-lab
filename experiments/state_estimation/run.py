@@ -26,18 +26,16 @@ from __future__ import annotations
 import argparse
 import time
 
-from experiments.common import install_stop_handler, publish_battery, state_payload
 from experiments.state_estimation.filters import HeightFusionKalman, ScalarKalman
-from drl.config import ServerConfig
-from drl.connection import connect
-from drl.dashboard import DashboardServer, Frame
-from drl.recording import CsvRecorder
-from drl.sensors.ranger import RangerReading
+from drl.cli import add_experiment_args
+from drl.dashboard import Frame
+from drl.sensors import Sensors
+from drl.session import ExperimentSession
 from drl.telemetry import (
-    TelemetryHub,
     make_accel_config,
     make_battery_config,
-    make_ranger_config,
+    make_flow_config,
+    make_multiranger_config,
     make_state_config,
 )
 
@@ -52,72 +50,69 @@ _ATTITUDE = ("roll", "pitch", "yaw")
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="drl: state estimation (Kalman filtering)")
-    parser.add_argument("--uri", default=None, help="Crazyflie radio URI override")
-    parser.add_argument("--port", type=int, default=8000, help="dashboard port")
+    add_experiment_args(parser, record=True)
     parser.add_argument("--rate-ms", type=int, default=50, help="sensor log period")
-    parser.add_argument("--no-record", action="store_true", help="disable CSV recording")
-    parser.add_argument("--no-browser", action="store_true", help="don't auto-open browser")
     args = parser.parse_args()
 
-    stop = install_stop_handler()
-    server = DashboardServer(ServerConfig(port=args.port)).start(open_browser=not args.no_browser)
-    server.publish(Frame("meta", {"experiment": "state estimation (Kalman filtering)"}))
     channels = list(_RANGE_BEAMS) + ["height"] + list(_ATTITUDE)
     fieldnames = ["elapsed_s", "vbat"]
     for channel in channels:
         fieldnames += [f"{channel}_raw", f"{channel}_filtered"]
-    recorder = None if args.no_record else CsvRecorder("state_estimation", fieldnames=fieldnames)
 
-    # One scalar filter per smoothed channel (range beams + attitude angles),
-    # plus the height-fusion filter driven by the vertical accelerometer.
-    # Range beams are noisier than the fused attitude estimate, so they get a
-    # smaller measurement variance ratio (trust the model more, smooth harder).
-    range_filters = {beam: ScalarKalman(q=1.0, r=0.05) for beam in _RANGE_BEAMS}
-    attitude_filters = {angle: ScalarKalman(q=5.0, r=0.5) for angle in _ATTITUDE}
-    height_filter = HeightFusionKalman()
-
-    # Latest raw + filtered value per channel, published together so the
-    # dashboard chart keeps every series time-aligned.
-    estimate: dict = {}
-    last_t: dict = {}
-    last_vbat = {"value": None}
-
-    def _dt(block: str, sample) -> float:
-        now = sample.get("_host_t", time.time())
-        prev = last_t.get(block)
-        last_t[block] = now
-        return (now - prev) if prev is not None else 0.0
-
-    with connect(args.uri) as link:
-        decks = link.decks()
+    with ExperimentSession(
+        "state estimation (Kalman filtering)",
+        port=args.port,
+        uri=args.uri,
+        open_browser=not args.no_browser,
+        connect_drone=True,
+        arm=False,
+        record=None if args.no_record else "state_estimation",
+        record_fieldnames=fieldnames,
+    ) as sess:
+        decks = sess.link.decks()
         if not decks.get("multiranger", False):
             print("WARNING: Multi-ranger deck not detected; beams will read out of range.")
 
-        hub = TelemetryHub(link.scf)
-        hub.add_config(make_ranger_config(args.rate_ms))
-        hub.add_config(make_state_config(args.rate_ms))
-        hub.add_config(make_accel_config(args.rate_ms))
-        hub.add_config(make_battery_config())
+        range_filters = {beam: ScalarKalman(q=1.0, r=0.05) for beam in _RANGE_BEAMS}
+        attitude_filters = {angle: ScalarKalman(q=5.0, r=0.5) for angle in _ATTITUDE}
+        height_filter = HeightFusionKalman()
+
+        estimate: dict = {}
+        last_t: dict = {}
+        last_vbat = {"value": None}
+
+        def _dt(block: str, sample) -> float:
+            now = sample.get("_host_t", time.time())
+            prev = last_t.get(block)
+            last_t[block] = now
+            return (now - prev) if prev is not None else 0.0
+
+        sess.hub.add_config(make_multiranger_config(args.rate_ms))
+        sess.hub.add_config(make_flow_config(args.rate_ms))
+        sess.hub.add_config(make_state_config(args.rate_ms))
+        sess.hub.add_config(make_accel_config(args.rate_ms))
+        sess.hub.add_config(make_battery_config())
+        sess.hub.attach_dashboard(sess.server, auto=["battery", "state"])
 
         def on_sample(block: str, ts: int, sample) -> None:
-            if block == "ranger":
-                reading = RangerReading.from_sample(sample)
-                raw = reading.as_dict()
-                server.publish(Frame("ranger", raw))
-                dt = _dt("ranger", sample)
+            if block in ("multiranger", "flow"):
+                sensors = Sensors.from_hub(sess.hub)
+                raw = sensors.as_dict()
+                sess.server.publish(Frame("ranger", raw))
+                dt = _dt("sensors", sample)
                 for beam in _RANGE_BEAMS:
                     kf = range_filters[beam]
                     kf.predict(dt)
                     kf.update(raw.get(beam))
                     estimate[beam] = {"raw": raw.get(beam), "filtered": kf.value}
-                # Downward range also corrects the height-fusion filter.
                 height_filter.update(raw.get("down"))
                 estimate["height"] = {"raw": raw.get("down"), "filtered": height_filter.height}
-                server.publish(Frame("estimate", dict(estimate)))
+                sess.server.publish(Frame("estimate", dict(estimate)))
                 _record(sample)
             elif block == "state":
+                from drl.dashboard.frames import state_payload
+
                 payload = state_payload(sample)
-                server.publish(Frame("state", payload))
                 dt = _dt("state", sample)
                 for angle in _ATTITUDE:
                     kf = attitude_filters[angle]
@@ -130,27 +125,23 @@ def main() -> int:
                 height_filter.predict(dt, accel_z)
             elif block == "battery":
                 last_vbat["value"] = sample.get("pm.vbat")
-                publish_battery(server, sample)
 
         def _record(sample) -> None:
-            if recorder is None:
+            if sess.recorder is None:
                 return
             row: dict = {"vbat": last_vbat["value"]}
             for channel, pair in estimate.items():
                 row[f"{channel}_raw"] = pair["raw"]
                 row[f"{channel}_filtered"] = round(pair["filtered"], 4)
-            recorder.write(row)
+            sess.recorder.write(row)
 
-        hub.subscribe(on_sample)
+        sess.hub.subscribe(on_sample)
 
-        with hub:
+        with sess.hub:
             print("Streaming sensors. Move objects near the beams. Ctrl+C to stop.")
-            while not stop.is_set():
+            while not sess.stop.is_set():
                 time.sleep(0.1)
 
-    if recorder is not None:
-        recorder.close()
-    server.stop()
     print("Done.")
     return 0
 

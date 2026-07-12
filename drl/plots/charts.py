@@ -1,7 +1,7 @@
 """Offline plotting helpers for recorded Drone Research Lab data.
 
 These are convenience functions for turning recordings into publishable figures.
-``matplotlib`` (and ``numpy``) are required; install the optional extra::
+``matplotlib`` (and ``numpy``) are required; install the ``analysis`` extra::
 
     pip install -e ".[analysis]"
 

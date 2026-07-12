@@ -31,7 +31,7 @@ pip install -e .            # installs the drl core package (editable)
 pip install -e ".[analysis]"
 ```
 
-This puts the `drl` core on the Python path so `import drl` works from anywhere. Run experiments and scripts as modules from the repo root (see below) so they resolve `drl` and `experiments.common` without any path hacks.
+This puts the `drl` core on the Python path so `import drl` works from anywhere. Run experiments and scripts as modules from the repo root (see below).
 
 Next, bring up the hardware:
 

@@ -18,7 +18,7 @@ import math
 import time
 from typing import Dict, Optional, Tuple
 
-from experiments.common import install_stop_handler
+from drl.signals import install_stop_handler
 from experiments.slam.mapper import MapConfig, OccupancyGrid
 from experiments.slam.pointcloud import PointCloud
 from experiments.slam.run import SlamState

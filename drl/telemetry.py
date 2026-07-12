@@ -2,12 +2,14 @@
 
 This provides:
 
-- :func:`make_state_config`, :func:`make_ranger_config`, :func:`make_battery_config`,
-  :func:`make_accel_config` - small builders for the LogConfig blocks experiments
-  commonly need.
+- :func:`make_state_config`, :func:`make_multiranger_config`, :func:`make_flow_config`,
+  :func:`make_battery_config`, :func:`make_accel_config` - small builders for the
+  LogConfig blocks experiments commonly need.
+- :func:`yaw_radians`, :func:`position_from_sample`, :func:`pose_from_sample` -
+  parse position and attitude from state samples.
 - :class:`TelemetryHub` - registers one or more LogConfigs, fans incoming data
-  out to subscriber callbacks, and keeps a short ring buffer of the latest
-  samples per block for polling-style consumers.
+  out to subscriber callbacks, keeps a short ring buffer of the latest samples
+  per block, and can auto-publish standard frames to the dashboard.
 
 The Crazyflie logging framework streams a fixed set of variables at a fixed
 rate; see the cflib example at
@@ -16,15 +18,19 @@ rate; see the cflib example at
 from __future__ import annotations
 
 import logging
+import math
 import time
 from collections import deque
 from threading import Lock
-from typing import Callable, Deque, Dict, List, Optional
+from typing import Callable, Deque, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from cflib.crazyflie.log import LogConfig
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 
 from drl.config import TelemetryConfig
+
+if TYPE_CHECKING:
+    from drl.dashboard import DashboardServer
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +38,28 @@ logger = logging.getLogger(__name__)
 # Crazyflie timestamp (ms) and a host wall-clock time (s).
 Sample = Dict[str, float]
 SubscriberCallback = Callable[[str, int, Sample], None]
+Position = Tuple[float, float, float]
+Pose = Tuple[float, float, float, float]
+
+
+def yaw_radians(sample: Sample) -> float:
+    """Extract yaw from a state sample and convert degrees -> radians."""
+    return math.radians(sample.get("stabilizer.yaw", 0.0) or 0.0)
+
+
+def position_from_sample(sample: Sample) -> Position:
+    """Return ``(x, y, z)`` from a state telemetry sample."""
+    return (
+        sample.get("stateEstimate.x", 0.0),
+        sample.get("stateEstimate.y", 0.0),
+        sample.get("stateEstimate.z", 0.0),
+    )
+
+
+def pose_from_sample(sample: Sample) -> Pose:
+    """Return ``(x, y, z, yaw_rad)`` from a state telemetry sample."""
+    x, y, z = position_from_sample(sample)
+    return (x, y, z, yaw_radians(sample))
 
 
 def make_state_config(rate_ms: int = 50) -> LogConfig:
@@ -46,14 +74,20 @@ def make_state_config(rate_ms: int = 50) -> LogConfig:
     return cfg
 
 
-def make_ranger_config(rate_ms: int = 50) -> LogConfig:
-    """The five Multi-ranger beams plus the down-facing z-range (mm)."""
-    cfg = LogConfig(name="ranger", period_in_ms=rate_ms)
+def make_multiranger_config(rate_ms: int = 50) -> LogConfig:
+    """The five Multi-ranger TOF beams (mm)."""
+    cfg = LogConfig(name="multiranger", period_in_ms=rate_ms)
     cfg.add_variable("range.front", "uint16_t")
     cfg.add_variable("range.back", "uint16_t")
     cfg.add_variable("range.left", "uint16_t")
     cfg.add_variable("range.right", "uint16_t")
     cfg.add_variable("range.up", "uint16_t")
+    return cfg
+
+
+def make_flow_config(rate_ms: int = 50) -> LogConfig:
+    """The Flow deck downward range sensor (mm)."""
+    cfg = LogConfig(name="flow", period_in_ms=rate_ms)
     cfg.add_variable("range.zrange", "uint16_t")
     return cfg
 
@@ -127,6 +161,50 @@ class TelemetryHub:
         with self._lock:
             sample = self._latest.get(block)
             return dict(sample) if sample is not None else None
+
+    def position(self) -> Optional[Position]:
+        """Return the latest ``(x, y, z)`` position estimate, or None."""
+        sample = self.latest("state")
+        if sample is None:
+            return None
+        return position_from_sample(sample)
+
+    def pose(self) -> Optional[Pose]:
+        """Return the latest ``(x, y, z, yaw_rad)`` pose, or None."""
+        sample = self.latest("state")
+        if sample is None:
+            return None
+        return pose_from_sample(sample)
+
+    def attach_dashboard(
+        self,
+        server: "DashboardServer",
+        *,
+        auto: Sequence[str] = ("battery", "state"),
+    ) -> None:
+        """Subscribe to auto-publish standard dashboard frames from telemetry.
+
+        Supported ``auto`` block names: ``battery``, ``state``, ``ranger``.
+        Experiments can still :meth:`subscribe` for custom frame types.
+        """
+        auto_set = set(auto)
+
+        def _publish(block: str, _ts: int, sample: Sample) -> None:
+            if block == "battery" and "battery" in auto_set:
+                from drl.dashboard.frames import publish_battery
+
+                publish_battery(server, sample)
+            elif block == "state" and "state" in auto_set:
+                from drl.dashboard.frames import publish_state
+
+                publish_state(server, sample)
+            elif block in ("multiranger", "flow") and "ranger" in auto_set:
+                from drl.dashboard import Frame
+                from drl.sensors import Sensors
+
+                server.publish(Frame("ranger", Sensors.from_hub(self).as_dict()))
+
+        self.subscribe(_publish)
 
     def start(self) -> "TelemetryHub":
         for config in self._configs.values():
