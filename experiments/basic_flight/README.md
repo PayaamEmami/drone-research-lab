@@ -1,6 +1,6 @@
 # Basic flight
 
-Minimal takeoff-hover-land smoke test. Uses the Crazyflie firmware position controller: ramp altitude up once, hold steady, then ramp down and land.
+Minimal takeoff-hover-land smoke test: climb straight up, hover for a few seconds, then land.
 
 ## Run
 
@@ -14,8 +14,8 @@ python -m experiments.basic_flight.run --dry-run
 # 3. Fly (~1.6 ft up, hover 4 s, land)
 python -m experiments.basic_flight.run
 
-# Even slower climb/descent
-python -m experiments.basic_flight.run --height 0.5 --ramp-rate 0.04 --hover 6
+# Higher / longer hover
+python -m experiments.basic_flight.run --height 0.7 --hover 6
 ```
 
-Defaults: `--height 0.5`, `--hover 4`, `--ramp-rate 0.06` m/s (about 8 s to climb).
+Defaults: `--height 0.5` m, `--hover 4` s, `--climb-rate 0.3` m/s.
