@@ -145,8 +145,15 @@ def main() -> int:
             else:
                 print("Flying spiral. Ctrl+C to land.")
                 controller.reset()
-                with VelocityFlight(link.scf, default_height=args.base_height) as flight:
+                flight = VelocityFlight(link.scf, default_height=args.base_height)
+                flight.take_off()
+                try:
                     control_loop(flight)
+                finally:
+                    # Land from the actual altitude, since the spiral climbs
+                    # above base_height and a fixed-height descent would cut the
+                    # motors while still airborne.
+                    flight.land(from_height=current_estimate()[2])
 
     if recorder is not None:
         recorder.close()

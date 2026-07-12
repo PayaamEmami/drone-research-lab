@@ -110,12 +110,19 @@ class VelocityFlight:
         """Hold position (zero velocity)."""
         self.send_velocity(0.0, 0.0, 0.0)
 
-    def land(self, velocity: float | None = None) -> None:
-        """Descend and stop the motors. Safe to call more than once."""
+    def land(self, velocity: float | None = None, from_height: float | None = None) -> None:
+        """Descend and stop the motors. Safe to call more than once.
+
+        :param velocity: descent speed (m/s); defaults to ``takeoff_velocity``.
+        :param from_height: altitude to descend from (m); defaults to
+            ``default_height``. Pass the current estimate when the drone may be
+            higher than the takeoff height so it descends all the way down.
+        """
         if not self._flying:
             return
         descent = velocity if velocity is not None else self.takeoff_velocity
-        descent_time = self.default_height / descent if descent > 0 else 0.0
+        height = self.default_height if from_height is None else from_height
+        descent_time = height / descent if descent > 0 else 0.0
         self.send_velocity(0.0, 0.0, -abs(descent))
         time.sleep(descent_time)
         self.stop()
