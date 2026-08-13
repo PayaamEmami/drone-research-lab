@@ -19,9 +19,23 @@ Drone Research Lab (DRL) is a research platform for running experiments on a nan
 - [Multi-ranger deck](https://www.bitcraze.io/products/multi-ranger-deck/): five time-of-flight range sensors (front/back/left/right/up) for proximity sensing and mapping.
 - [Crazyradio 2.0](https://www.bitcraze.io/products/crazyradio-2-0/): USB dongle providing the 2.4GHz radio link between the host computer and the drone.
 
+## Architecture
+
+Drone Research Lab separates a small reusable core (the `drl` package) from standalone experiment scripts. The Crazyflie talks to the host over a CRTP radio link through Bitcraze's `cflib`; the core wraps that dependency for connection, telemetry, sensors, and recording so every experiment gets the same plumbing. Scripts under `experiments/*/run.py` import the core and add only their own logic, then fan data out two ways: CSV files via `recording.py` for offline review, and a FastAPI dashboard server that broadcasts live frames over WebSockets to a browser UI built with Canvas and Chart.js.
+
+```mermaid
+flowchart TB
+  cf[Crazyflie] -->|"CRTP radio"| cflib[cflib]
+  cflib --> core["DRL core<br/>connection / telemetry / sensors"]
+  exp[Experiment] --> core
+  core --> rec[("CSV recording")]
+  core --> server["Dashboard<br/>FastAPI + WebSocket"]
+  server --> browser["Browser<br/>Canvas + Chart.js"]
+```
+
 ## Getting started
 
-Requires Python 3.10+ and a Crazyradio. Install the `drl` core package (editable):
+Requires Python 3.10+ and a Crazyradio. Install the `drl` core package:
 
 ```bash
 python -m venv .venv

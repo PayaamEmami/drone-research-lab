@@ -28,16 +28,6 @@ tests/          offline pytest suite
 
 Drone Research Lab separates a small reusable core (the `drl` package) from experiments (standalone scripts under `experiments/`). The core handles everything that every experiment needs; experiments add only their own logic.
 
-```mermaid
-flowchart TB
-  cf["Crazyflie"] -->|"CRTP radio"| cflib["cflib (pip dependency)"]
-  cflib --> core["drl core<br/>connection / telemetry / sensors / recording"]
-  exp["experiment script<br/>experiments/*/run.py"] -->|uses| core
-  core --> rec["recording.py (CSV)"]
-  core --> server["dashboard server (FastAPI + WS)"]
-  server --> browser["browser UI (Canvas + Chart.js)"]
-```
-
 The core package (`drl/`) is installable and import-only. Experiments live under `experiments/` and read like standalone demos. The dashboard runs on a background thread; experiments call `server.publish(Frame(...))` from anywhere and the frame is broadcast to every connected browser as JSON.
 
 ### Core modules
