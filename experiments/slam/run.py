@@ -82,10 +82,12 @@ class SlamState:
         if self._last_ekf is None or self._corrected is None:
             corrected = ekf
         else:
+            dyaw = ekf[2] - self._last_ekf[2]
+            dyaw = math.atan2(math.sin(dyaw), math.cos(dyaw))
             predicted = (
                 self._corrected[0] + (ekf[0] - self._last_ekf[0]),
                 self._corrected[1] + (ekf[1] - self._last_ekf[1]),
-                self._corrected[2] + (ekf[2] - self._last_ekf[2]),
+                self._corrected[2] + dyaw,
             )
             corrected = match_scan(self.grid, predicted, ranges, self.match_cfg)
 
@@ -96,6 +98,11 @@ class SlamState:
         self._last_ekf = ekf
         self._corrected = corrected
         return corrected
+
+    @property
+    def corrected_pose(self) -> Optional[Pose]:
+        """Latest scan-matched pose used for the occupancy map (None before first step)."""
+        return self._corrected
 
     def map_payload(self) -> Optional[dict]:
         if self._corrected is None:
@@ -142,7 +149,7 @@ def run_replay(args, server: DashboardServer, state: SlamState, stop) -> None:
 
 def _go_to(
     flight: VelocityFlight,
-    hub: TelemetryHub,
+    state: SlamState,
     target: Tuple[float, float],
     stop,
     *,
@@ -150,14 +157,14 @@ def _go_to(
     max_speed: float = 0.2,
     timeout: float = 15.0,
 ) -> None:
-    """Simple world-frame P-controller flight to a horizontal waypoint."""
+    """P-controller flight to a waypoint in the scan-matched map frame."""
     t0 = time.monotonic()
     while not stop.is_set() and (time.monotonic() - t0) < timeout:
-        pos = hub.position()
-        if pos is None:
+        pose = state.corrected_pose
+        if pose is None:
             time.sleep(0.05)
             continue
-        px, py, _ = pos
+        px, py = pose[0], pose[1]
         ex, ey = target[0] - px, target[1] - py
         if math.hypot(ex, ey) < tol:
             break
@@ -234,8 +241,8 @@ def _explore_loop(args, hub: TelemetryHub, state: SlamState, stop, link) -> None
     with VelocityFlight(link.scf, default_height=args.height) as flight:
         _yaw_sweep(flight, stop)
         while not stop.is_set():
-            pose_data = hub.pose()
-            pose = (pose_data[0], pose_data[1], pose_data[3]) if pose_data else (0.0, 0.0, 0.0)
+            # Plan and track in the corrected map frame (not raw EKF odometry).
+            pose = state.corrected_pose or (0.0, 0.0, 0.0)
             waypoints = explorer.next_goal(pose)
             if not waypoints:
                 print("No frontiers left; exploration complete.")
@@ -243,7 +250,7 @@ def _explore_loop(args, hub: TelemetryHub, state: SlamState, stop, link) -> None
             for wp in waypoints:
                 if stop.is_set():
                     break
-                _go_to(flight, hub, wp, stop)
+                _go_to(flight, state, wp, stop)
             _yaw_sweep(flight, stop)
 
 

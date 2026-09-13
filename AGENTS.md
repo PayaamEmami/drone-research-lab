@@ -103,6 +103,7 @@ The browser UI (`drl/dashboard/static/js/`) switches on `type`:
 
 - The `drl/` core is reusable and import-only. It should not depend on any single experiment.
 - Experiments live under `experiments/<name>/run.py` and read like standalone demos; they add only their own logic and import the core directly.
+- SLAM exploration must plan and track in the scan-matched (`corrected_pose`) frame; raw EKF pose diverges from the occupancy map as corrections accumulate. `VelocityFlight.land(from_height=...)` treats non-positive heights as `default_height` so a missing state estimate cannot cut motors immediately.
 - Run experiments and scripts as modules from the repo root (`python -m experiments.<name>.run`) so `import drl` resolves without path hacks.
 - The dashboard runs on a background thread. Publish data with `server.publish(Frame(type, payload))`; `DashboardServer.publish()` is thread-safe and broadcasts JSON to all connected browsers.
 - Every websocket message follows the frame protocol: `{ "type", "ts", "payload" }`. Known types are `meta`, `ranger`, `state`, `cmd`, `map`, `estimate`, `traj`, `cloud`, and `battery` (see the frame protocol table above).

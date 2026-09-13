@@ -121,7 +121,12 @@ class VelocityFlight:
         if not self._flying:
             return
         descent = velocity if velocity is not None else self.takeoff_velocity
-        height = self.default_height if from_height is None else from_height
+        # Treat missing/non-positive heights as the takeoff default so a missing
+        # state estimate (0.0) cannot cut motors immediately mid-air.
+        if from_height is None or from_height <= 0:
+            height = self.default_height
+        else:
+            height = from_height
         descent_time = height / descent if descent > 0 else 0.0
         self.send_velocity(0.0, 0.0, -abs(descent))
         time.sleep(descent_time)

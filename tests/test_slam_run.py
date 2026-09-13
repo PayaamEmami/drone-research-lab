@@ -84,3 +84,15 @@ def test_run_replay_reads_csv(tmp_path):
     assert len(state.trail) == 8
     assert any(f.type == "map" for f in server.frames)
     assert any(f.type == "cloud" for f in server.frames)
+
+
+def test_slam_step_wraps_yaw_across_pi_boundary():
+    """Raw EKF yaw jumps of ~2pi must not poison the corrected heading."""
+    import math
+
+    state = _new_state()
+    ranges = simulate_ranges(0.0, 0.0, 0.0, room=ROOM)
+    state.step((0.0, 0.0, math.pi - 0.05), 0.4, ranges)
+    corrected = state.step((0.0, 0.0, -math.pi + 0.05), 0.4, ranges)
+    # Crossing +pi -> -pi is a small positive step, not a ~2pi jump.
+    assert abs(corrected[2] - (math.pi - 0.05 + 0.1)) < 0.2
