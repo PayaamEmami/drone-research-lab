@@ -137,6 +137,8 @@ def main() -> int:
             try:
                 control_loop(flight)
             finally:
+                # current_estimate() returns z=0 when position is unknown; land()
+                # treats non-positive heights as default_height.
                 flight.land(from_height=current_estimate()[2])
 
     print("Done.")
