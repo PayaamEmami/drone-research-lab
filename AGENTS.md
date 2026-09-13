@@ -6,6 +6,8 @@ This file orients AI coding agents and human readers to this repository. It expl
 
 Drone Research Lab is a Python research platform for running flight and sensing experiments on a [Bitcraze Crazyflie](https://www.bitcraze.io/) nano-quadcopter. It pairs a small reusable core library with standalone experiment runners and a live browser dashboard (FastAPI + websockets) for telemetry and visualization.
 
+There is **no cloud deployment** for this repo; it is local/research only. Offline CI runs via `.github/workflows/verify.yml` (`pip install -e ".[dev]" && pytest`).
+
 ## Stack
 
 - Language: Python 3.10+
