@@ -127,8 +127,13 @@ class VelocityFlight:
             height = self.default_height
         else:
             height = from_height
-        descent_time = height / descent if descent > 0 else 0.0
-        self.send_velocity(0.0, 0.0, -abs(descent))
+        # Non-positive descent speed would otherwise sleep 0s and cut motors
+        # while still airborne (e.g. --climb-rate 0).
+        speed = abs(descent)
+        if speed <= 0:
+            speed = abs(self.takeoff_velocity) if self.takeoff_velocity > 0 else 0.3
+        descent_time = height / speed
+        self.send_velocity(0.0, 0.0, -speed)
         time.sleep(descent_time)
         self.stop()
 

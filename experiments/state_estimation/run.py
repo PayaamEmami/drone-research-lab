@@ -104,7 +104,9 @@ def main() -> int:
         sess.hub.attach_dashboard(sess.server, auto=["battery", "state"])
 
         def on_sample(block: str, ts: int, sample) -> None:
-            if block in ("multiranger", "flow"):
+            # Gate on multiranger only: flow shares the same period, and
+            # Sensors.from_hub already merges the latest down-range reading.
+            if block == "multiranger":
                 sensors = Sensors.from_hub(sess.hub)
                 raw = sensors.as_dict()
                 sess.server.publish(Frame("ranger", raw))

@@ -120,7 +120,9 @@ class OccupancyGrid:
             for cx, cy in ray[:-1]:
                 self._apply(cx, cy, -self.cfg.l_free)
             # The endpoint is an obstacle only if this beam actually hit something.
-            if hit and r < self.cfg.max_range_m + 1e-6:
+            # Skip when the hit collapses to the robot cell (near-zero range):
+            # marking origin occupied blocks path planning from the start pose.
+            if hit and r < self.cfg.max_range_m + 1e-6 and (egx, egy) != (ox, oy):
                 self._apply(egx, egy, self.cfg.l_occ)
                 points.append((ex, ey))
 

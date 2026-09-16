@@ -68,7 +68,8 @@ def main() -> int:
         sess.hub.attach_dashboard(sess.server, auto=["battery", "ranger"])
 
         def on_sample(block: str, ts: int, sample) -> None:
-            if block not in ("multiranger", "flow") or sess.recorder is None:
+            # Record once per cycle on multiranger; flow shares the same period.
+            if block != "multiranger" or sess.recorder is None:
                 return
             ranges = Sensors.from_hub(sess.hub).as_dict()
             sess.recorder.write({beam: ranges.get(beam) for beam in _RANGE_BEAMS})
