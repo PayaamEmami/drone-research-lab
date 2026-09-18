@@ -55,6 +55,15 @@ def test_slam_map_payload_none_before_first_step():
     assert _new_state().map_payload() is None
 
 
+def test_slam_cloud_payload_is_locked_snapshot():
+    state = _new_state()
+    ranges = simulate_ranges(0.0, 0.0, 0.0, room=ROOM)
+    state.step((0.0, 0.0, 0.0), 0.4, ranges)
+    payload = state.cloud_payload()
+    assert "points" in payload
+    assert len(payload["points"]) == len(state.cloud)
+
+
 # ---------------------------------------------------------------------------
 # Replay
 # ---------------------------------------------------------------------------

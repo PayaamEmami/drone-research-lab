@@ -35,6 +35,7 @@ import argparse
 import csv
 import math
 import time
+from threading import Lock
 from typing import Dict, List, Optional, Tuple
 
 from experiments.slam.explorer import ExploreConfig, Explorer
@@ -73,45 +74,53 @@ class SlamState:
         self.grid = grid
         self.cloud = cloud
         self.match_cfg = match_cfg
+        self._lock = Lock()
         self._last_ekf: Optional[Pose] = None
         self._corrected: Optional[Pose] = None
         self.trail: List[Tuple[float, float]] = []
         self.raw_trail: List[Tuple[float, float]] = []
 
     def step(self, ekf: Pose, z: float, ranges: Dict[str, Optional[float]]) -> Pose:
-        if self._last_ekf is None or self._corrected is None:
-            corrected = ekf
-        else:
-            dyaw = ekf[2] - self._last_ekf[2]
-            dyaw = math.atan2(math.sin(dyaw), math.cos(dyaw))
-            predicted = (
-                self._corrected[0] + (ekf[0] - self._last_ekf[0]),
-                self._corrected[1] + (ekf[1] - self._last_ekf[1]),
-                self._corrected[2] + dyaw,
-            )
-            corrected = match_scan(self.grid, predicted, ranges, self.match_cfg)
+        with self._lock:
+            if self._last_ekf is None or self._corrected is None:
+                corrected = ekf
+            else:
+                dyaw = ekf[2] - self._last_ekf[2]
+                dyaw = math.atan2(math.sin(dyaw), math.cos(dyaw))
+                predicted = (
+                    self._corrected[0] + (ekf[0] - self._last_ekf[0]),
+                    self._corrected[1] + (ekf[1] - self._last_ekf[1]),
+                    self._corrected[2] + dyaw,
+                )
+                corrected = match_scan(self.grid, predicted, ranges, self.match_cfg)
 
-        self.grid.integrate(corrected[0], corrected[1], corrected[2], ranges)
-        self.cloud.add_scan(corrected[0], corrected[1], z, corrected[2], ranges)
-        self.trail.append((corrected[0], corrected[1]))
-        self.raw_trail.append((ekf[0], ekf[1]))
-        self._last_ekf = ekf
-        self._corrected = corrected
-        return corrected
+            self.grid.integrate(corrected[0], corrected[1], corrected[2], ranges)
+            self.cloud.add_scan(corrected[0], corrected[1], z, corrected[2], ranges)
+            self.trail.append((corrected[0], corrected[1]))
+            self.raw_trail.append((ekf[0], ekf[1]))
+            self._last_ekf = ekf
+            self._corrected = corrected
+            return corrected
 
     @property
     def corrected_pose(self) -> Optional[Pose]:
         """Latest scan-matched pose used for the occupancy map (None before first step)."""
-        return self._corrected
+        with self._lock:
+            return self._corrected
 
     def map_payload(self) -> Optional[dict]:
-        if self._corrected is None:
-            return None
-        payload = self.grid.to_payload(self._corrected)
-        payload["trail"] = [[round(x, 3), round(y, 3)] for x, y in self.trail[-500:]]
-        payload["pose_raw"] = {"x": self._last_ekf[0], "y": self._last_ekf[1]} \
-            if self._last_ekf else None
-        return payload
+        with self._lock:
+            if self._corrected is None:
+                return None
+            payload = self.grid.to_payload(self._corrected)
+            payload["trail"] = [[round(x, 3), round(y, 3)] for x, y in self.trail[-500:]]
+            payload["pose_raw"] = {"x": self._last_ekf[0], "y": self._last_ekf[1]} \
+                if self._last_ekf else None
+            return payload
+
+    def cloud_payload(self) -> dict:
+        with self._lock:
+            return self.cloud.to_payload()
 
 
 def _sample_to_inputs(state_sample, multiranger_sample, flow_sample) -> Tuple[Pose, float, Dict[str, Optional[float]]]:
@@ -126,7 +135,7 @@ def _publish_frames(server: DashboardServer, state: SlamState) -> None:
     payload = state.map_payload()
     if payload is not None:
         server.publish(Frame("map", payload))
-    server.publish(Frame("cloud", state.cloud.to_payload()))
+    server.publish(Frame("cloud", state.cloud_payload()))
 
 
 def run_replay(args, server: DashboardServer, state: SlamState, stop) -> None:
@@ -198,14 +207,16 @@ def run_live(args, sess: ExperimentSession, state: SlamState) -> None:
     sess.hub.attach_dashboard(sess.server, auto=["battery"])
 
     def on_sample(block: str, ts: int, sample) -> None:
-        if block not in ("multiranger", "flow"):
+        # Both multiranger and flow fire at the same period; integrate once per
+        # cycle on multiranger and pull the latest flow sample for down-range.
+        if block != "multiranger":
             return
         latest_state = sess.hub.latest("state")
         if latest_state is None:
             return
         ekf, z, ranges = _sample_to_inputs(
             latest_state,
-            sess.hub.latest("multiranger"),
+            sample,
             sess.hub.latest("flow"),
         )
         corrected = state.step(ekf, z, ranges)
@@ -226,7 +237,7 @@ def run_live(args, sess: ExperimentSession, state: SlamState) -> None:
         else:
             print("Hand-carry the platform to map the space. Ctrl+C to stop.")
             while not sess.stop.is_set():
-                sess.server.publish(Frame("cloud", state.cloud.to_payload()))
+                sess.server.publish(Frame("cloud", state.cloud_payload()))
                 time.sleep(0.5)
 
 

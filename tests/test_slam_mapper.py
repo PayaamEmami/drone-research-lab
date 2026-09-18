@@ -35,6 +35,17 @@ def test_integrate_marks_free_and_occupied():
     assert prob[wy, wx] > 0.5
 
 
+def test_integrate_skips_hit_on_robot_cell():
+    """Near-zero ranges must not mark the origin cell occupied."""
+    grid = OccupancyGrid(MapConfig(size_m=8.0, resolution_m=0.05))
+    zero = {"front": 0.0, "back": 0.0, "left": 0.0, "right": 0.0,
+            "up": None, "down": None}
+    grid.integrate(0.0, 0.0, 0.0, zero)
+    cx, cy = grid._world_to_cell(0.0, 0.0)
+    assert grid.probability()[cy, cx] == 0.5
+    assert not bool(grid._observed[cy, cx])
+
+
 def test_score_scan_peaks_at_true_pose():
     grid = _build_map(pose=(0.0, 0.0, 0.0))
     true_ranges = simulate_ranges(0.0, 0.0, 0.0, room=ROOM)
