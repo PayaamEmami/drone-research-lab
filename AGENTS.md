@@ -107,6 +107,7 @@ The browser UI (`drl/dashboard/static/js/`) switches on `type`:
 - Experiments live under `experiments/<name>/run.py` and read like standalone demos; they add only their own logic and import the core directly.
 - SLAM exploration must plan and track in the scan-matched (`corrected_pose`) frame; raw EKF pose diverges from the occupancy map as corrections accumulate.
 - Live experiments that subscribe to both `multiranger` and `flow` must gate scan/filter work on **one** block (prefer `multiranger`) and read the other via `hub.latest(...)`; both configs share the same period and dual callbacks would double-integrate.
+- `VelocityFlight.send_velocity` commands world-frame velocity (m/s) and yaw rate (deg/s). Behaviors that think in the body frame (forward / left) convert with `drl.motion.body_to_world` before sending.
 - `VelocityFlight.land` treats non-positive `from_height` as `default_height` and non-positive descent speed as a positive fallback so landing cannot cut motors immediately mid-air.
 - Occupancy hits that collapse to the robot cell (near-zero range) must not mark the origin occupied; `SlamState` locks `step` / map / cloud payloads against `MapPublisher`.
 - Run experiments and scripts as modules from the repo root (`python -m experiments.<name>.run`) so `import drl` resolves without path hacks.
@@ -139,4 +140,4 @@ Configuration is environment-overridable so experiments stay portable across mac
 Hardware/driver notes:
 
 - On Windows the Crazyradio may need the Zadig USB driver; on Linux see cflib's udev rules.
-- Do not assume a Crazyflie or Crazyradio is connected when verifying a change. Prefer running any experiment with `--demo` (for example `python -m experiments.proximity_sensing.run --demo`) for UI work and local logic checks unless the task explicitly requires live hardware. The `--demo` flag is provided by `drl.cli.add_experiment_args` and handled by `ExperimentSession`, which streams synthetic frames via the `drl.dashboard.demo` harness (generic per-frame generators, or an experiment-supplied `demo_simulator` for higher fidelity such as SLAM and trajectory tracking).
+- Do not assume a Crazyflie or Crazyradio is connected when verifying a change. Prefer running any experiment with `--demo` (for example `python -m experiments.proximity_sensing.run --demo`) for UI work and local logic checks unless the task explicitly requires live hardware. The `--demo` flag is provided by `drl.cli.add_experiment_args` and handled by `ExperimentSession`, which streams synthetic frames via the `drl.dashboard.demo` harness (generic per-frame generators, or an experiment-supplied `demo_simulator` for higher fidelity such as SLAM, trajectory tracking, hand chase, and orbit).

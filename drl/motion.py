@@ -18,6 +18,7 @@ Typical use::
 from __future__ import annotations
 
 import logging
+import math
 import time
 import warnings
 from threading import Event, Lock, Thread
@@ -35,6 +36,18 @@ warnings.filterwarnings(
 
 # World-frame velocity command: (vx, vy, vz) in m/s and yaw rate in deg/s.
 Setpoint = Tuple[float, float, float, float]
+
+
+def body_to_world(vx: float, vy: float, yaw_rad: float) -> Tuple[float, float]:
+    """Rotate a body-frame horizontal velocity into the world frame.
+
+    Body x points forward and body y points left. ``yaw_rad`` is the heading
+    measured from world +x toward world +y, matching ``stabilizer.yaw``.
+    :meth:`VelocityFlight.send_velocity` expects the returned world-frame pair.
+    """
+    c = math.cos(yaw_rad)
+    s = math.sin(yaw_rad)
+    return (vx * c - vy * s, vx * s + vy * c)
 
 
 class VelocityFlight:

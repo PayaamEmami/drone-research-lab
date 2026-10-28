@@ -38,6 +38,7 @@ function configurePanels(experiment) {
   const isTraj = /trajectory/.test(name);
   const isSlam = /slam/.test(name);
   const isProximity = /proximity/.test(name);
+  const isReactive = /hand chase|orbit/.test(name);
 
   setCardVisible("card-map", isSlam);
   setCardVisible("card-cloud", isSlam);
@@ -46,14 +47,14 @@ function configurePanels(experiment) {
   setCardVisible("card-sensor-table", isProximity);
 
   // Proximity HUD is useful for any live sensing experiment.
-  const sensing = isStateEst || isSlam || isTraj || isProximity;
+  const sensing = isStateEst || isSlam || isTraj || isProximity || isReactive;
   setCardVisible("card-hud", sensing);
   // Proximity sensing keeps a minimal layout: HUD + raw-values table only.
   setCardVisible("card-chart", sensing && !isProximity);
   setCardVisible("card-state", sensing && !isProximity);
 
   // State estimation only observes sensors; it sends no flight commands.
-  setCardVisible("command-panel", !isStateEst && (isSlam || isTraj));
+  setCardVisible("command-panel", !isStateEst && (isSlam || isTraj || isReactive));
   const stateTitle = document.getElementById("state-card-title");
   if (stateTitle) {
     stateTitle.textContent = isStateEst ? "Onboard state estimate" : "State estimate";
